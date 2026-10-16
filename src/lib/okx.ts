@@ -94,7 +94,7 @@ import { logger } from "./logger";
 import { createDeferredCleanupSlot } from "./deferredCleanup";
 import { subscribeMarketEvents } from "./marketEventBus";
 import type { MarketEvent } from "./marketEvents";
-import { invokeDesktop, invokeOptional, isTauriRuntime, listenOptional } from "./tauri";
+import { hasBackend, hasBackendAsync, invokeDesktop, invokeOptional, isTauriRuntime, listenOptional } from "./tauri";
 
 const REST_BASE = "https://openapi.okx.com";
 const PUBLIC_WS = "wss://ws.okx.com:8443/ws/v5/public";
@@ -225,7 +225,7 @@ async function okxFetch<T>(path: string, signal?: AbortSignal): Promise<T> {
 }
 
 export async function syncOkxTime(): Promise<OkxTimeState> {
-  if (isTauriRuntime()) {
+  if (await hasBackendAsync()) {
     const viaTauri = await invokeDesktop<OkxTimeState>("okx_sync_time");
     if (!viaTauri) throw new Error("OKX time probe returned no result");
     return viaTauri;
@@ -249,7 +249,7 @@ export async function syncOkxTime(): Promise<OkxTimeState> {
 
 export async function probeOkxStartupNetwork(): Promise<OkxTimeState> {
   const timeoutMs = 5_000;
-  if (isTauriRuntime()) {
+  if (await hasBackendAsync()) {
     const result = await withTimeout(
       invokeDesktop<OkxTimeState>("okx_startup_network_probe"),
       timeoutMs,
@@ -617,7 +617,7 @@ export async function saveWatchlistConfig(config: WatchlistConfig): Promise<Watc
 }
 
 export async function testPublicWsReachability(): Promise<OkxWsProbeResult> {
-  if (isTauriRuntime()) {
+  if (await hasBackendAsync()) {
     const viaTauri = await invokeDesktop<OkxWsProbeResult>("okx_public_ws_probe");
     if (!viaTauri) throw new Error("OKX Public WebSocket probe returned no result");
     return viaTauri;
@@ -627,7 +627,7 @@ export async function testPublicWsReachability(): Promise<OkxWsProbeResult> {
 }
 
 export async function testBusinessWsReachability(): Promise<OkxWsProbeResult> {
-  if (isTauriRuntime()) {
+  if (await hasBackendAsync()) {
     const viaTauri = await invokeDesktop<OkxWsProbeResult>("okx_business_ws_probe");
     if (!viaTauri) throw new Error("OKX Business WebSocket probe returned no result");
     return viaTauri;
@@ -755,7 +755,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
 }
 
 export async function fetchTicker(instId: string): Promise<Ticker> {
-  if (isTauriRuntime()) {
+  if (await hasBackendAsync()) {
     const viaTauri = await invokeDesktop<Ticker>("okx_ticker", { instId });
     if (!viaTauri) throw new Error(`OKX ticker returned no result for ${instId}`);
     return viaTauri;
@@ -766,7 +766,7 @@ export async function fetchTicker(instId: string): Promise<Ticker> {
 }
 
 export async function fetchMarketTickers(): Promise<Ticker[]> {
-  if (isTauriRuntime()) {
+  if (await hasBackendAsync()) {
     const viaTauri = await invokeDesktop<Ticker[]>("okx_market_tickers");
     if (!viaTauri) throw new Error("OKX market tickers returned no result");
     return viaTauri;
@@ -777,7 +777,7 @@ export async function fetchMarketTickers(): Promise<Ticker[]> {
 }
 
 export async function fetchFundingRate(instId: string): Promise<FundingRate | null> {
-  if (isTauriRuntime()) {
+  if (await hasBackendAsync()) {
     return await invokeDesktop<FundingRate | null>("okx_funding_rate", { instId });
   }
   const json = await okxFetch<{ data: Record<string, string>[] }>(`/api/v5/public/funding-rate?instId=${encodeURIComponent(instId)}`);
@@ -786,7 +786,7 @@ export async function fetchFundingRate(instId: string): Promise<FundingRate | nu
 
 export async function fetchCandles(instId: string, bar: string, limit = 300): Promise<Candle[]> {
   const boundedLimit = Math.min(Math.max(limit, 1), 300);
-  if (isTauriRuntime()) {
+  if (await hasBackendAsync()) {
     let localFailure: unknown = null;
     try {
       // 本地库读取慢或超时会回退到 OKX 快照，不是前端异常。
@@ -1026,7 +1026,7 @@ export function connectMarketStream(
   callbacks: MarketCallbacks,
   watchlist: string[] = [instId]
 ) {
-  if (isTauriRuntime()) {
+  if (hasBackend()) {
     const sessionId = `market-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     let closed = false;
     let browserFallback: (() => void) | null = null;

@@ -81,6 +81,108 @@ export function isTauriRuntime() {
   return "__TAURI_INTERNALS__" in window;
 }
 
+// ===== D6 transport 收敛：单一桥边界 =====
+export type TransportMode = "tauri" | "iframe" | "none";
+
+const HTTP_BRIDGE_ORIGIN = "http://127.0.0.1:17899";
+
+let cachedTransportMode: TransportMode | null = null;
+let transportProbePromise: Promise<TransportMode> | null = null;
+
+/** 惰性检测传输模式：tauri → iframe（HTTP 桥可达）→ none（纯预览）。 */
+export function detectTransportMode(): Promise<TransportMode> {
+  if (cachedTransportMode !== null) return Promise.resolve(cachedTransportMode);
+  if (transportProbePromise) return transportProbePromise;
+  transportProbePromise = (async () => {
+    if (isTauriRuntime()) {
+      cachedTransportMode = "tauri";
+      return cachedTransportMode;
+    }
+    try {
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), 1500);
+      const res = await fetch(`${HTTP_BRIDGE_ORIGIN}/api/status`, { mode: "cors", signal: controller.signal });
+      window.clearTimeout(timer);
+      if (res.ok) {
+        cachedTransportMode = "iframe";
+      } else {
+        cachedTransportMode = "none";
+      }
+    } catch {
+      cachedTransportMode = "none";
+    }
+    return cachedTransportMode;
+  })();
+  return transportProbePromise;
+}
+
+/** 是否有后端可调（tauri 或 iframe 桥）。 */
+export function hasBackend(): boolean {
+  return isTauriRuntime() || cachedTransportMode === "iframe";
+}
+
+/** 异步版 hasBackend：探测完成后判定。 */
+export async function hasBackendAsync(): Promise<boolean> {
+  await detectTransportMode();
+  return hasBackend();
+}
+
+/** 是否支持原生窗口（仅 tauri）。 */
+export function supportsNativeWindow(): boolean {
+  return isTauriRuntime();
+}
+
+/** 是否支持语音采集（iframe 下仍可用麦克风，由语音降级路径决定）。 */
+export function supportsVoiceCapture(): boolean {
+  return true;
+}
+
+/** 桥 fetch：POST /api/<command>，解析 {ok,value}/{ok,error}。 */
+async function bridgeInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  const res = await fetch(`${HTTP_BRIDGE_ORIGIN}/api/${command}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(args ?? {})
+  });
+  if (!res.ok) {
+    throw new Error(`bridge HTTP ${res.status} for ${command}`);
+  }
+  const envelope = await res.json() as { ok: boolean; value?: T; error?: string };
+  if (!envelope.ok) {
+    throw new Error(envelope.error ?? `bridge command failed: ${command}`);
+  }
+  return envelope.value as T;
+}
+
+/** 共享 EventSource（iframe 下的事件流），带 since 回放。 */
+let sharedEventSource: EventSource | null = null;
+let sharedEventSourceSeq = 0;
+let sharedEventSourceRefs = 0;
+const sharedEventHandlers = new Map<string, Set<(payload: unknown) => void>>();
+
+function ensureSharedEventSource(): EventSource {
+  if (sharedEventSource) return sharedEventSource;
+  const es = new EventSource(`${HTTP_BRIDGE_ORIGIN}/api/events`);
+  es.onmessage = (ev) => {
+    try {
+      const frame = JSON.parse(ev.data) as { seq: number; event: string; payload: unknown };
+      if (frame.seq > sharedEventSourceSeq) sharedEventSourceSeq = frame.seq;
+      const handlers = sharedEventHandlers.get(frame.event);
+      if (handlers) {
+        for (const h of handlers) h(frame.payload);
+      }
+    } catch {
+      // 非 JSON 帧（如心跳）忽略。
+    }
+  };
+  es.onerror = () => {
+    // 断线后重连（浏览器自动重连；seq 用于回放，桥侧支持 ?since）。
+    sharedEventSource = null;
+  };
+  sharedEventSource = es;
+  return es;
+}
+
 export async function loadUiPreferences() {
   return invokeOptional<import("../types").UiPreferencesSummary>("ui_preferences_summary", {
     request: { systemLocale: navigator.languages?.[0] || navigator.language || "en-US" }
@@ -118,6 +220,15 @@ export async function restartAfterSourceAppUpdate() {
 }
 
 export async function invokeOptional<T>(command: string, args?: Record<string, unknown>): Promise<T | null> {
+  await detectTransportMode();
+  if (cachedTransportMode === "iframe") {
+    try {
+      return await bridgeInvoke<T>(command, args);
+    } catch (error) {
+      logger.warn(`bridge command failed (optional): ${command}`, { error: error instanceof Error ? error.message : String(error) });
+      return null;
+    }
+  }
   if (!isTauriRuntime()) return null;
   try {
     return await invoke<T>(command, args);
@@ -238,6 +349,16 @@ export async function cleanupOldDataRoot() {
 
 /** quiet：调用方自己处理失败（例如有回退路径）时只记 warn，不弹“前端代码异常”通知。 */
 export async function invokeDesktop<T>(command: string, args?: Record<string, unknown>, options?: { quiet?: boolean }): Promise<T | null> {
+  await detectTransportMode();
+  if (cachedTransportMode === "iframe") {
+    try {
+      return await bridgeInvoke<T>(command, args);
+    } catch (error) {
+      if (options?.quiet) logger.warn(`bridge command failed (handled by caller): ${command}`, { error: error instanceof Error ? error.message : String(error) });
+      else logger.error(`bridge command failed: ${command}`, error);
+      throw error;
+    }
+  }
   if (!isTauriRuntime()) return null;
   try {
     return await invoke<T>(command, args);
@@ -249,6 +370,22 @@ export async function invokeDesktop<T>(command: string, args?: Record<string, un
 }
 
 export async function listenOptional<T>(event: string, handler: (payload: T) => void): Promise<(() => void) | null> {
+  await detectTransportMode();
+  if (cachedTransportMode === "iframe") {
+    const es = ensureSharedEventSource();
+    let set = sharedEventHandlers.get(event);
+    if (!set) {
+      set = new Set();
+      sharedEventHandlers.set(event, set);
+    }
+    const wrapped = (payload: unknown) => handler(payload as T);
+    set.add(wrapped);
+    sharedEventSourceRefs += 1;
+    return () => {
+      set.delete(wrapped);
+      sharedEventSourceRefs -= 1;
+    };
+  }
   if (!isTauriRuntime()) return null;
   try {
     installIdempotentEventUnregister();

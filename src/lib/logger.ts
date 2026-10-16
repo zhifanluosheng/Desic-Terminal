@@ -47,17 +47,28 @@ function push(entry: LogEntry) {
 
 async function writeBackendLog(entry: LogEntry) {
   // 写入失败后暂停 30 秒再重试，而不是整个会话永久停写（否则卡顿诊断等日志会悄悄丢失）。
-  if (!isTauriRuntime() || Date.now() - backendLogFailedAt < 30_000) return;
+  if (Date.now() - backendLogFailedAt < 30_000) return;
+  const payload = {
+    entry: {
+      level: entry.level,
+      message: entry.message,
+      error: entry.error,
+      context: entry.context,
+      timestamp: Date.parse(entry.time) || Date.now()
+    }
+  };
   try {
-    await invoke("frontend_log", {
-      entry: {
-        level: entry.level,
-        message: entry.message,
-        error: entry.error,
-        context: entry.context,
-        timestamp: Date.parse(entry.time) || Date.now()
-      }
-    });
+    if (isTauriRuntime()) {
+      await invoke("frontend_log", payload);
+    } else {
+      // 非 Tauri（iframe）：自实现 HTTP 桥写入，不 import tauri.ts（避免循环依赖）。
+      const res = await fetch("http://127.0.0.1:17899/api/frontend_log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error(`bridge HTTP ${res.status}`);
+    }
   } catch (error) {
     if (backendLogFailedAt === 0) console.warn("[warn] frontend log file write failed; retrying in 30s", error);
     backendLogFailedAt = Date.now();
