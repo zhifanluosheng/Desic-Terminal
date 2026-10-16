@@ -26,7 +26,7 @@ import {
   X
 } from "lucide-react";
 import { listChartAlerts, loadChartWorkspace, saveChartWorkspace } from "../lib/okx";
-import { listenOptional } from "../lib/tauri";
+import { listenOptional, isTauriRuntime } from "../lib/tauri";
 import { createDeferredCleanupSlot } from "../lib/deferredCleanup";
 import { buildChartAlertIndicatorOptions } from "../lib/chartAlertIndicators";
 import { ChartDataController, updateCandleIndexes, type ChartDataPatch } from "../lib/chartDataController";
@@ -442,7 +442,6 @@ const lineToolItems = [
   { kind: "vertical", english: "Vertical line", chinese: "垂直线", icon: MoveDiagonal2 }
 ] as const;
 
-const AUTO_FIT_READY_CANDLE_COUNT = 80;
 /// Bars shown around the replay cursor when a new page has no prior zoom to
 /// inherit. Wide enough to read structure around the cursor without rendering
 /// the whole 1500-bar page as a dense wall.
@@ -489,6 +488,15 @@ export function KlineChart({ candles, orderFlowMode = false, orderFlowPreview = 
   const shouldPersistWorkspace = persistWorkspace ?? !reviewVariant;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<TradingChartHandle | null>(null);
+  // 布局驱动自适应状态机（D4）：iframe 里容器尺寸晚于数据就绪是首帧畸形的根因。
+  // layoutReadyRef：容器首次拿到非 0 尺寸；fittedOnceRef：完成首次有效 fitContent；
+  // manualViewportRef：用户手动操作过视口（滚轮/pointerdown/guide drag/Reset）。
+  const embeddedRef = useRef(!isTauriRuntime());
+  const layoutReadyRef = useRef(false);
+  const fittedOnceRef = useRef(false);
+  const manualViewportRef = useRef(false);
+  const lastContainerSizeRef = useRef<{ w: number; h: number } | null>(null);
+  const chartDebugHistoryRef = useRef<Array<{ t: number; w: number; h: number; event: string }>>([]);
   // 图表实例重建时递增，供需要在新实例上重新挂载图元的效果使用。
   const [chartHandleVersion, setChartHandleVersion] = useState(0);
   const orderFlowLayer = useOrderFlowLayer({ chartRef, chartVersion: chartHandleVersion, enabled: orderFlowMode, symbol, timeframe, candles, text: chartText, preview: orderFlowPreview });
@@ -1379,7 +1387,36 @@ export function KlineChart({ candles, orderFlowMode = false, orderFlowPreview = 
       pendingVisibleRangeRef.current = range;
       scheduleChartInteractionFlush();
     });
-    const resizeObserver = new ResizeObserver(() => setCoordinateVersion((version) => version + 1));
+    const resizeObserver = new ResizeObserver(() => {
+      setCoordinateVersion((version) => version + 1);
+      // D4(b) 布局驱动状态机：容器尺寸变化时测量并决定是否补 fit。
+      const rect = activeContainer.getBoundingClientRect();
+      const w = Math.round(rect.width);
+      const h = Math.round(rect.height);
+      if (w > 0 && h > 0) {
+        if (!layoutReadyRef.current) {
+          layoutReadyRef.current = true;
+        }
+        const last = lastContainerSizeRef.current;
+        const sizeChanged = last === null || last.w !== w || last.h !== h;
+        if (sizeChanged) {
+          lastContainerSizeRef.current = { w, h };
+          chartDebugHistoryRef.current.push({ t: Date.now(), w, h, event: "resize" });
+          if (chartDebugHistoryRef.current.length > 500) chartDebugHistoryRef.current.shift();
+        }
+        // 首次就绪或（非手动视口 && 尺寸变化）→ fitContent。
+        const shouldRefit = (!fittedOnceRef.current && layoutReadyRef.current) || (!manualViewportRef.current && sizeChanged);
+        if (shouldRefit) {
+          try {
+            chart.fitContent();
+            fittedOnceRef.current = true;
+            chartDebugHistoryRef.current.push({ t: Date.now(), w, h, event: "fit" });
+          } catch (_) {
+            // fit 失败不致命（如尚无数据）。
+          }
+        }
+      }
+    });
     resizeObserver.observe(activeContainer);
 
     chartRef.current = chart;
@@ -1409,6 +1446,25 @@ export function KlineChart({ candles, orderFlowMode = false, orderFlowPreview = 
       orderPriceLineSignaturesRef.current.clear();
     };
   }, [requestMoreHistoryIfNeeded]);
+
+  // D4(b) 诊断钩子：iframe 排障经 CDP 直读，不凭感觉改。
+  useEffect(() => {
+    const g = globalThis as unknown as Record<string, unknown>;
+    g.__desicChartDebug = () => ({
+      embedded: embeddedRef.current,
+      layoutReady: layoutReadyRef.current,
+      fittedOnce: fittedOnceRef.current,
+      manualViewport: manualViewportRef.current,
+      containerW: lastContainerSizeRef.current?.w ?? 0,
+      containerH: lastContainerSizeRef.current?.h ?? 0,
+      lastFitAt: chartDebugHistoryRef.current.filter((e) => e.event === "fit").at(-1)?.t ?? 0,
+    });
+    g.__desicChartDebugHistory = chartDebugHistoryRef.current;
+    return () => {
+      delete g.__desicChartDebug;
+      delete g.__desicChartDebugHistory;
+    };
+  }, []);
 
   useEffect(() => {
     // `undefined` means this chart owns its crosshair. Keep ordinary trading
@@ -1662,7 +1718,9 @@ export function KlineChart({ candles, orderFlowMode = false, orderFlowPreview = 
     });
     if (!reviewVariant && autoFit && patch.type !== "updateLatest") {
       chart.resetView();
-      if (canonicalCandles.length >= AUTO_FIT_READY_CANDLE_COUNT) setAutoFit(false);
+      // D4(b): 布局驱动 latch——数据到达时若容器已就绪则标记完成一次 fit，
+      // 不再由数据根数（AUTO_FIT_READY_CANDLE_COUNT）触发，避免数据早于容器尺寸就绪时 latch 过早。
+      if (layoutReadyRef.current) fittedOnceRef.current = true;
     } else if (replayPageChanged) {
       // A replay page swap replaces every bar, so the previous page's logical
       // range is meaningless: index 1400 of the old page is unrelated to index
@@ -2474,6 +2532,7 @@ export function KlineChart({ candles, orderFlowMode = false, orderFlowPreview = 
     event.preventDefault();
     event.stopPropagation();
     setAutoFit(false);
+    manualViewportRef.current = true;
     setGuideDrag({ tool });
     setDrawMode(false);
     setMeasureMode(false);
@@ -2617,6 +2676,7 @@ export function KlineChart({ candles, orderFlowMode = false, orderFlowPreview = 
 
   const handleChartPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     setAutoFit(false);
+    manualViewportRef.current = true;
     setDrawingMenu(null);
     if (event.button === 0) {
       setChartContextMenu(null);
@@ -3066,6 +3126,8 @@ export function KlineChart({ candles, orderFlowMode = false, orderFlowPreview = 
             type="button"
             onClick={() => {
               setAutoFit(true);
+              manualViewportRef.current = false;
+              fittedOnceRef.current = false;
               chartRef.current?.resetView();
             }}
           >
@@ -3438,7 +3500,7 @@ export function KlineChart({ candles, orderFlowMode = false, orderFlowPreview = 
           guideDrag && "guide-dragging"
         )}
         ref={containerRef}
-        onWheel={() => setAutoFit(false)}
+        onWheel={() => { setAutoFit(false); manualViewportRef.current = true; }}
         onContextMenu={(event) => {
           if (measureMode || drawMode || pendingDrawPoint) {
             handleCanvasContextMenu(event);
