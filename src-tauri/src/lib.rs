@@ -76,6 +76,7 @@ mod trade_review;
 mod trade_support;
 mod voice;
 mod voice_local;
+mod event_registry;
 mod voice_stream;
 use crate::agent_library::{
     ai_agent_delete, ai_agent_duplicate, ai_agent_generate, ai_agent_generate_cancel,
