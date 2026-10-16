@@ -181,7 +181,7 @@ pub async fn write_http_response(
     body: &[u8],
 ) -> io::Result<()> {
     let header = format!(
-        "HTTP/1.1 {status} {status_text}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 {status} {status_text}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type\r\n\r\n",
         body.len()
     );
     stream.write_all(header.as_bytes()).await?;
@@ -338,7 +338,9 @@ async fn handle_conn(mut stream: TcpStream, bridge: Arc<HttpBridge>) -> io::Resu
     let path = req.path.clone();
     let method = req.method.clone();
 
-    if method == "POST" && path.starts_with("/api/") {
+    if method == "OPTIONS" {
+        write_http_response(&mut stream, 204, "No Content", "text/plain", b"").await
+    } else if method == "POST" && path.starts_with("/api/") {
         let command = path.trim_start_matches("/api/");
         handle_command(&mut stream, &bridge, command, &req).await
     } else if method == "GET" && path == "/api/status" {

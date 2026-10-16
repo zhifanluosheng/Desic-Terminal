@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>iframe repro harness</title>
+<style>
+  :root { --dsw-alias-bg-base: #050508; --dsw-alias-label-secondary: #9a9aa5; }
+  html, body { margin: 0; height: 100%; background: #050508; color: #e3e4e6; font: 14px/1.5 system-ui, sans-serif; }
+  #panel { position: absolute; inset: 0; display: flex; flex-direction: column; }
+  #toolbar { flex: none; padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,.08); display: flex; gap: 10px; align-items: center; }
+  button { padding: 6px 12px; cursor: pointer; }
+  #frame-wrap { flex: 1; position: relative; min-height: 0; }
+  iframe { width: 100%; height: 100%; border: none; display: block; background: #050508; }
+  #placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: #8a8a93; }
+  /* 场景：延迟容器尺寸 —— 初始宽度 0，模拟 iframe 尺寸晚于数据就绪 */
+  #frame-wrap.delay-size iframe { width: 0; transition: none; }
+  #frame-wrap.delay-size.ready iframe { width: 100%; }
+</style>
+</head>
+<body>
+<div id="panel">
+  <div id="toolbar">
+    <button id="toggle-delay">切换延迟容器尺寸场景</button>
+    <button id="reload-frame">重载 iframe</button>
+    <span id="status">就绪</span>
+  </div>
+  <div id="frame-wrap">
+    <div id="placeholder">等待 Desic 后端启动…</div>
+  </div>
+</div>
+<script>
+  const PORT = 17899;
+  const URL = `http://127.0.0.1:${PORT}/`;
+  const frameWrap = document.getElementById('frame-wrap');
+  const placeholder = document.getElementById('placeholder');
+  const statusEl = document.getElementById('status');
+  let delaySize = false;
+
+  function probe() {
+    fetch(`http://127.0.0.1:${PORT}/api/status`, { mode: 'cors' })
+      .then(r => {
+        if (r.ok) mount();
+        else { statusEl.textContent = '后端未就绪 (HTTP ' + r.status + ')'; setTimeout(probe, 1000); }
+      })
+      .catch(() => { statusEl.textContent = '等待后端… ' + URL; setTimeout(probe, 1000); });
+  }
+
+  function mount() {
+    statusEl.textContent = '就绪';
+    placeholder.style.display = 'none';
+    if (!document.getElementById('frame')) {
+      const f = document.createElement('iframe');
+      f.id = 'frame';
+      f.title = 'Desic Terminal';
+      f.src = URL;
+      frameWrap.appendChild(f);
+    }
+  }
+
+  document.getElementById('toggle-delay').addEventListener('click', () => {
+    delaySize = !delaySize;
+    frameWrap.classList.toggle('delay-size', delaySize);
+    statusEl.textContent = delaySize ? '延迟尺寸场景：ON（容器尺寸晚于数据）' : '延迟尺寸场景：OFF';
+    // 2 秒后释放尺寸，模拟 DSH 面板布局过渡完成
+    if (delaySize) {
+      setTimeout(() => {
+        frameWrap.classList.add('ready');
+        statusEl.textContent = '延迟尺寸场景：已释放容器尺寸';
+      }, 2000);
+    } else {
+      frameWrap.classList.remove('ready');
+    }
+  });
+
+  document.getElementById('reload-frame').addEventListener('click', () => {
+    const f = document.getElementById('frame');
+    if (f) { f.src = URL; }
+  });
+
+  probe();
+</script>
+</body>
+</html>
