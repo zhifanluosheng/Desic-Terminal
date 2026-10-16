@@ -176,12 +176,29 @@ export type TradingChartHandle = {
   destroy: () => void;
 };
 
+/** 读主题变量决定图表底色与文字色（DSH 宿主用 --dsw-alias-*，缺省回退到原值）。 */
+function resolveChartColors(): { background: string; textColor: string } {
+  let background = "#000000";
+  let textColor = "#9a9aa5";
+  try {
+    const style = getComputedStyle(document.documentElement);
+    const bg = style.getPropertyValue("--dsw-alias-bg-base").trim();
+    if (bg) background = bg;
+    const fg = style.getPropertyValue("--dsw-alias-label-secondary").trim();
+    if (fg) textColor = fg;
+  } catch (_) {
+    // getComputedStyle 不可用（极端环境）时回退默认值。
+  }
+  return { background, textColor };
+}
+
 export function createTradingChart(container: HTMLElement, lineConfigs: ChartLineConfig[]): TradingChartHandle {
+  const chartColors = resolveChartColors();
   const chart = createChart(container, {
     autoSize: true,
     layout: {
-      background: { type: ColorType.Solid, color: "#000000" },
-      textColor: "#9a9aa5",
+      background: { type: ColorType.Solid, color: chartColors.background },
+      textColor: chartColors.textColor,
       attributionLogo: false
     },
     grid: {
