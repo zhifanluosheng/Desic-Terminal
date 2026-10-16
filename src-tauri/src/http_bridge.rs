@@ -9,16 +9,14 @@
 //!   - GET  /api/status      → 健康检查。
 //!   - GET  /<path>          → 托管前端 dist 静态文件（SPA）。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io;
 use std::path::PathBuf;
-use std::sync::Arc;
-
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, RwLock};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
-
-/// 桥接端口（DSH 插件与前端降级路径共用此常量约定）。
 pub const HTTP_BRIDGE_PORT: u16 = 17899;
 
 /// 事件广播通道容量：行情/私有流等高频事件可能瞬间堆积，给足余量避免 lag 丢帧。
@@ -31,26 +29,49 @@ const MAX_HEADER_BYTES: usize = 64 * 1024;
 #[derive(Clone)]
 pub struct EventBus {
     tx: broadcast::Sender<String>,
+    seq: Arc<AtomicU64>,
+    history: Arc<RwLock<VecDeque<(u64, String)>>>,
 }
 
 impl EventBus {
     pub fn new() -> Self {
         let (tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
-        Self { tx }
+        Self {
+            tx,
+            seq: Arc::new(AtomicU64::new(0)),
+            history: Arc::new(RwLock::new(VecDeque::new())),
+        }
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<String> {
         self.tx.subscribe()
     }
 
-    /// 由事件监听回调调用：把事件名 + 负载 JSON 广播出去。
+    /// 由事件监听回调调用：把事件名 + 负载 JSON 广播出去，并写历史。
     pub fn publish(&self, event: &str, payload: &str) {
-        let frame = serde_json::json!({ "event": event, "payload": payload }).to_string();
+        let seq = self.seq.fetch_add(1, Ordering::SeqCst) + 1;
+        let frame = serde_json::json!({ "seq": seq, "event": event, "payload": payload }).to_string();
+        // 写历史（容量 8192，满则丢最旧）。
+        {
+            let mut h = self.history.write().unwrap();
+            h.push_back((seq, frame.clone()));
+            while h.len() > EVENT_CHANNEL_CAPACITY {
+                h.pop_front();
+            }
+        }
         // 无订阅者时 send 返回 Err，静默即可。
         let _ = self.tx.send(frame);
     }
-}
 
+    /// 返回 seq > since 的历史帧（供 SSE 重连回放）。
+    pub fn history_since(&self, since: u64) -> Vec<String> {
+        let h = self.history.read().unwrap();
+        h.iter()
+            .filter(|(seq, _)| *seq > since)
+            .map(|(_, frame)| frame.clone())
+            .collect()
+    }
+}
 /// HTTP 桥：持有 AppHandle（用于 command 分发取 State / 发事件）与 dist 目录。
 pub struct HttpBridge {
     pub app: tauri::AppHandle,
@@ -218,4 +239,204 @@ mod tests {
     // 读满逻辑的集成验证依赖真实 TcpStream，这里用纯函数覆盖 parse 分支，
     // 读满 body 的循环在 Task 2 实现里经 `read_http_request` 的 `body.len() < content_length`
     // 分支验证（见 http_bridge 的 handle_conn 冒烟，Task 3 用 curl 大 payload 验证）。
+}
+
+
+// ===== 引入 build.rs 生成的 dispatch 表 =====
+include!("http_bridge_dispatch.rs");
+
+/// 启动 HTTP 桥：绑定 127.0.0.1:17899 并循环 accept。
+pub async fn serve(bridge: HttpBridge) -> io::Result<()> {
+    let listener = TcpListener::bind(("127.0.0.1", HTTP_BRIDGE_PORT)).await?;
+    let bridge = Arc::new(bridge);
+    loop {
+        let (stream, _addr) = listener.accept().await?;
+        let bridge = Arc::clone(&bridge);
+        tokio::spawn(async move {
+            if let Err(e) = handle_conn(stream, bridge).await {
+                // 单连接错误不致命，静默。
+                let _ = e;
+            }
+        });
+    }
+}
+
+/// 处理单个连接：读请求 → 路由 → 写响应。
+async fn handle_conn(mut stream: TcpStream, bridge: Arc<HttpBridge>) -> io::Result<()> {
+    let req = read_http_request(&mut stream).await?;
+    let path = req.path.clone();
+    let method = req.method.clone();
+
+    if method == "POST" && path.starts_with("/api/") {
+        let command = path.trim_start_matches("/api/");
+        handle_command(&mut stream, &bridge, command, &req).await
+    } else if method == "GET" && path == "/api/status" {
+        let body = serde_json::json!({
+            "ok": true,
+            "port": HTTP_BRIDGE_PORT,
+            "commands": 303,
+        });
+        write_http_response(&mut stream, 200, "OK", "application/json", body.to_string().as_bytes()).await
+    } else if method == "GET" && path.starts_with("/api/events") {
+        handle_sse(&mut stream, &bridge, &req).await
+    } else if method == "GET" {
+        serve_static(&mut stream, &bridge, &path).await
+    } else {
+        write_http_response(&mut stream, 405, "Method Not Allowed", "text/plain", b"method not allowed").await
+    }
+}
+
+/// POST /api/<command>：解析 JSON body → dispatch → 返回 {ok, value}/{ok, error}。
+async fn handle_command(
+    stream: &mut TcpStream,
+    bridge: &HttpBridge,
+    command: &str,
+    req: &ParsedRequest,
+) -> io::Result<()> {
+    let body_map: serde_json::Map<String, serde_json::Value> = if req.body.is_empty() {
+        serde_json::Map::new()
+    } else {
+        match serde_json::from_slice(&req.body) {
+            Ok(serde_json::Value::Object(m)) => m,
+            Ok(_) => {
+                return write_http_response(
+                    stream, 400, "Bad Request", "application/json",
+                    serde_json::json!({"ok": false, "error": "body must be a JSON object"}).to_string().as_bytes(),
+                ).await;
+            }
+            Err(e) => {
+                return write_http_response(
+                    stream, 400, "Bad Request", "application/json",
+                    serde_json::json!({"ok": false, "error": format!("invalid JSON: {e}")}).to_string().as_bytes(),
+                ).await;
+            }
+        }
+    };
+
+    match dispatch_command(&bridge.app, command, &body_map).await {
+        Ok(value) => {
+            let resp = serde_json::json!({"ok": true, "value": value});
+            write_http_response(stream, 200, "OK", "application/json", resp.to_string().as_bytes()).await
+        }
+        Err(e) => {
+            let resp = serde_json::json!({"ok": false, "error": e});
+            write_http_response(stream, 200, "OK", "application/json", resp.to_string().as_bytes()).await
+        }
+    }
+}
+
+/// GET /api/events?since=<seq>：SSE 流，先回放 >since 的历史事件，再实时转发。
+async fn handle_sse(
+    stream: &mut TcpStream,
+    bridge: &HttpBridge,
+    req: &ParsedRequest,
+) -> io::Result<()> {
+    let since = query_param(&req.path, "since").and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+
+    // 响应头（SSE 不关闭连接，手动写头）。
+    let header = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\nAccess-Control-Allow-Origin: *\r\n\r\n";
+    stream.write_all(header.as_bytes()).await?;
+    stream.flush().await?;
+
+    // 回放历史（EventBus 的 history 由 publish 写入）。
+    let history = bridge.events.history_since(since);
+    for frame in history {
+        stream.write_all(b"data: ").await?;
+        stream.write_all(frame.as_bytes()).await?;
+        stream.write_all(b"\n\n").await?;
+    }
+    stream.flush().await?;
+
+    // 实时订阅。
+    let mut rx = bridge.events.subscribe();
+    let mut ticker = tokio::time::interval(std::time::Duration::from_secs(15));
+    loop {
+        tokio::select! {
+            _ = ticker.tick() => {
+                // 心跳注释帧。
+                if stream.write_all(b": ping\n\n").await.is_err() {
+                    break;
+                }
+                let _ = stream.flush().await;
+            }
+            msg = rx.recv() => {
+                match msg {
+                    Ok(frame) => {
+                        if stream.write_all(b"data: ").await.is_err() {
+                            break;
+                        }
+                        if stream.write_all(frame.as_bytes()).await.is_err() {
+                            break;
+                        }
+                        if stream.write_all(b"\n\n").await.is_err() {
+                            break;
+                        }
+                        let _ = stream.flush().await;
+                    }
+                    Err(_) => break,
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// 从 URL 提取查询参数。
+fn query_param<'a>(path: &'a str, key: &str) -> Option<&'a str> {
+    let q = path.split('?').nth(1)?;
+    for pair in q.split('&') {
+        let mut it = pair.splitn(2, '=');
+        let k = it.next()?;
+        let v = it.next().unwrap_or("");
+        if k == key {
+            return Some(v);
+        }
+    }
+    None
+}
+
+/// GET /<path>：托管 dist 静态文件（SPA fallback 到 index.html）。
+async fn serve_static(stream: &mut TcpStream, bridge: &HttpBridge, path: &str) -> io::Result<()> {
+    let rel = path.trim_start_matches('/');
+    let rel = if rel.is_empty() { "index.html" } else { rel };
+    let mut file_path = bridge.dist_dir.join(rel);
+
+    // 防止目录穿越。
+    let dist_canonical = bridge.dist_dir.canonicalize().unwrap_or_else(|_| bridge.dist_dir.as_path().to_path_buf());
+    let candidate = file_path.canonicalize().unwrap_or_else(|_| file_path.clone());
+
+    if !candidate.starts_with(&dist_canonical) {
+        return write_http_response(stream, 403, "Forbidden", "text/plain", b"forbidden").await;
+    }
+
+    // SPA fallback：路径是目录或不存在时回退 index.html。
+    if file_path.is_dir() || !file_path.exists() {
+        file_path = bridge.dist_dir.join("index.html");
+    }
+
+    match tokio::fs::read(&file_path).await {
+        Ok(data) => {
+            let ct = content_type_for(&file_path);
+            write_http_response(stream, 200, "OK", ct, &data).await
+        }
+        Err(_) => {
+            write_http_response(stream, 404, "Not Found", "text/plain", b"not found").await
+        }
+    }
+}
+
+fn content_type_for(path: &std::path::Path) -> &'static str {
+    match path.extension().and_then(|e| e.to_str()) {
+        Some("html") => "text/html; charset=utf-8",
+        Some("js") => "application/javascript",
+        Some("css") => "text/css",
+        Some("json") => "application/json",
+        Some("svg") => "image/svg+xml",
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("ico") => "image/x-icon",
+        Some("woff") => "font/woff",
+        Some("woff2") => "font/woff2",
+        _ => "application/octet-stream",
+    }
 }
