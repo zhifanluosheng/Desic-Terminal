@@ -99,3 +99,6 @@ rust_out
 
 # Local promo video workspace (large rendered artifacts)
 promo-videos/
+
+# Isolated git worktrees (superpowers)
+.worktrees/
