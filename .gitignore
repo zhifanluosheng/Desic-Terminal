@@ -102,3 +102,6 @@ promo-videos/
 
 # Isolated git worktrees (superpowers)
 .worktrees/
+
+# CDP repro harness temporary chrome profiles
+.tmp-chrome-*/
