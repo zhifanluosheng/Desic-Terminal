@@ -205,6 +205,22 @@ impl HttpBridge {
             events: EventBus::new(),
         }
     }
+
+    /// 注册事件监听：把后端 app.emit 的每个全局事件转发到 EventBus。
+    /// 必须显式逐事件名调用 listen_any（tauri 无通配监听）。
+    pub fn install_listeners(&self) {
+        use tauri::Listener;
+        let app = self.app.clone();
+        let events = self.events.clone();
+        for (event_name, _source) in crate::event_registry::EVENT_REGISTRY {
+            let event_name = *event_name;
+            let events = events.clone();
+            app.listen_any(event_name, move |e| {
+                let payload = e.payload().to_string();
+                events.publish(event_name, &payload);
+            });
+        }
+    }
 }
 
 #[cfg(test)]
@@ -236,6 +252,46 @@ mod tests {
         assert_eq!(header_value(&headers, "missing"), None);
     }
 
+    #[test]
+    fn event_bus_publish_increments_seq_and_writes_history() {
+        let bus = EventBus::new();
+        bus.publish("market:event", "{\"a\":1}");
+        bus.publish("kline:sync", "{\"b\":2}");
+        bus.publish("ai:event", "{\"c\":3}");
+        let h = bus.history_since(0);
+        assert_eq!(h.len(), 3);
+        assert!(h[0].contains("\"seq\":1"));
+        assert!(h[1].contains("\"seq\":2"));
+        assert!(h[2].contains("\"seq\":3"));
+    }
+
+    #[test]
+    fn event_bus_history_since_filters_by_seq() {
+        let bus = EventBus::new();
+        for i in 0..5 {
+            bus.publish("market:event", &format!("{{\"i\":{i}}}"));
+        }
+        let h = bus.history_since(2);
+        assert_eq!(h.len(), 3);
+        assert!(h[0].contains("\"seq\":3"));
+        assert!(h[2].contains("\"seq\":5"));
+        // since 大于最大 seq 时为空
+        assert!(bus.history_since(100).is_empty());
+    }
+
+    #[test]
+    fn event_bus_evicts_oldest_beyond_capacity() {
+        let bus = EventBus::new();
+        // 容量 8192，写满后最旧被淘汰。这里验证 history 长度不超过容量。
+        for i in 0..(EVENT_CHANNEL_CAPACITY + 10) {
+            bus.publish("market:event", &format!("{{\"i\":{i}}}"));
+        }
+        let h = bus.history_since(0);
+        assert_eq!(h.len(), EVENT_CHANNEL_CAPACITY);
+        // 最旧的 10 个 seq 已被淘汰，最早的应是 seq=11
+        assert!(h[0].contains("\"seq\":11"));
+    }
+
     // 读满逻辑的集成验证依赖真实 TcpStream，这里用纯函数覆盖 parse 分支，
     // 读满 body 的循环在 Task 2 实现里经 `read_http_request` 的 `body.len() < content_length`
     // 分支验证（见 http_bridge 的 handle_conn 冒烟，Task 3 用 curl 大 payload 验证）。
@@ -247,6 +303,7 @@ include!("http_bridge_dispatch.rs");
 
 /// 启动 HTTP 桥：绑定 127.0.0.1:17899 并循环 accept。
 pub async fn serve(bridge: HttpBridge) -> io::Result<()> {
+    bridge.install_listeners();
     let listener = TcpListener::bind(("127.0.0.1", HTTP_BRIDGE_PORT)).await?;
     let bridge = Arc::new(bridge);
     loop {
