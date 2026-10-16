@@ -26335,6 +26335,11 @@ async fn ensure_database_and_workers(app: &tauri::AppHandle) -> bool {
 pub fn run() {
     install_boot_panic_hook();
     boot_log("=== Desic Terminal boot start ===");
+    // --embedded：无头模式，不创建可见窗口，只初始化运行时 + HTTP 桥。
+    let embedded = std::env::args().any(|a| a == "--embedded");
+    if embedded {
+        boot_log("embedded mode: headless, serving http bridge");
+    }
     blocking_work::install_async_runtime();
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -26348,8 +26353,28 @@ pub fn run() {
         .manage(IntelligenceRuntime::default())
         .manage(SystematicRuntime::default())
         .manage(AppUpdateRuntime::default())
-        .setup(|app| {
+        .setup(move |app| {
             boot_log("setup: begin");
+            if embedded {
+                // 无头模式：默认数据目录自动 bootstrap（Q2 决策），然后起 HTTP 桥。
+                let handle = app.handle().clone();
+                let dist_dir = crate::http_bridge::http_bridge_dist_dir();
+                let bridge = crate::http_bridge::HttpBridge::new(handle.clone(), dist_dir);
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = crate::http_bridge::serve(bridge).await {
+                        boot_log(&format!("http bridge serve error: {e}"));
+                    }
+                });
+                let handle_for_bootstrap = handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    match finalize_data_root_bootstrap(handle_for_bootstrap, None).await {
+                        Ok(_) => boot_log("embedded: data root bootstrap complete"),
+                        Err(e) => boot_log(&format!("embedded: data root bootstrap error: {e}")),
+                    }
+                });
+                boot_log("setup: embedded bridge started (no visible window)");
+                return Ok(());
+            }
             // 运行时目录与数据库初始化已延迟到 finalize_data_root_bootstrap 命令：
             // 全新安装需要先让用户确认数据存放位置，避免在用户选择之前写盘。
             let splash = match app.get_webview_window("splash") {

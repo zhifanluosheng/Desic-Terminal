@@ -11,7 +11,7 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -297,6 +297,20 @@ mod tests {
     // 分支验证（见 http_bridge 的 handle_conn 冒烟，Task 3 用 curl 大 payload 验证）。
 }
 
+
+/// 解析前端 dist 目录：优先 exe 同目录的 dist（release），回退 CARGO_MANIFEST_DIR/../dist（dev）。
+pub fn http_bridge_dist_dir() -> PathBuf {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let candidate = dir.join("dist");
+            if candidate.join("index.html").exists() {
+                return candidate;
+            }
+        }
+    }
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    manifest.join("../dist")
+}
 
 // ===== 引入 build.rs 生成的 dispatch 表 =====
 include!("http_bridge_dispatch.rs");
