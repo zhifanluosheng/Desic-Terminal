@@ -431,7 +431,7 @@ export function DirectorHost({ preference, controller, catalog, hints, paused, a
       if (sessionRef.current !== session) return;
       const t = latest.current.uiText;
       if (error instanceof VoiceCaptureError && error.code === "permission-denied") {
-        failWith(t("麦克风权限被拒绝。请在系统设置 → 隐私与安全性 → 麦克风中允许 Desic Terminal，然后重启应用。", "Microphone access was denied. Allow Desic Terminal under System Settings → Privacy & Security → Microphone, then restart."));
+        failWith(t("麦克风权限被拒绝。请在系统设置 → 隐私与安全性 → 麦克风中允许 Nuomi Terminal，然后重启应用。", "Microphone access was denied. Allow Nuomi Terminal under System Settings → Privacy & Security → Microphone, then restart."));
       } else if (error instanceof VoiceCaptureError && error.code === "no-device") {
         failWith(t("没有找到可用的麦克风", "No microphone found"));
       } else if (error instanceof VoiceCaptureError && error.code === "unsupported") {

@@ -798,7 +798,7 @@ export function App() {
   }
 
   if (windowLabel === null) {
-    return <main className="startup-boot-screen" aria-label={t("common:startupAria")}><span>Desic Terminal</span><i /></main>;
+    return <main className="startup-boot-screen" aria-label={t("common:startupAria")}><span>Nuomi Terminal</span><i /></main>;
   }
   const isChartWindow =
     windowLabel.startsWith("chart-");
@@ -1140,9 +1140,9 @@ function StartupGate({ onEnter, previewFailure }: { onEnter: (assets?: MarketAss
       <div className="startup-original">
       <section className="stage" aria-label={t("common:startupAria")}>
         <header className="chrome">
-          <div className="brand" aria-label="Desic Terminal">
+          <div className="brand" aria-label="Nuomi Terminal">
             <img className="brand-icon" src="/assets/brand/desic-terminal-icon.png" alt="" aria-hidden="true" />
-            Desic Terminal
+            Nuomi Terminal
           </div>
           <div className="startup-head-actions">
             <button className="startup-proxy-trigger" type="button" onClick={() => setProxyOpen(true)}>

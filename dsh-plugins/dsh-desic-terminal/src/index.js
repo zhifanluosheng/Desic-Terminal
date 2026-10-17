@@ -20,7 +20,7 @@ export const LAUNCH_DEBOUNCE_MS = 20_000
 const BRIDGE_STATUS_URL = `http://127.0.0.1:${BRIDGE_PORT}/api/status`
 const PROBE_TIMEOUT_MS = 1500
 const PROXY_ENV_KEYS = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy']
-const DEFAULT_EXE_PATH = 'C:/Users/Administrator/desic-target/debug/desic-terminal.exe'
+const DEFAULT_EXE_PATH = 'C:/Users/Administrator/desic-target/debug/nuomi-terminal.exe'
 
 export function resolveExePath(env = process.env) {
   return env.DESIC_EXE_PATH || DEFAULT_EXE_PATH

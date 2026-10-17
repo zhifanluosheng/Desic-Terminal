@@ -5058,8 +5058,9 @@ fn adopt_legacy_typesafe_config(raw: &str, config: &mut AiConfig) -> Option<Vec<
 
 pub(crate) fn load_ai_config_locked(app: &tauri::AppHandle) -> Result<AiConfig, String> {
     let path = workspace_ai_config_path();
-    let content =
-        fs::read_to_string(&path).map_err(|err| format!("AI config not found: {}", err))?;
+    let content = fs::read_to_string(&path).map_err(|err| {
+        format!("AI config not found: {}（尚未配置 AI 模型：请在 配置 → AI 助手 填写 Base URL / API Key / 模型后重试）", err)
+    })?;
     let mut config: AiConfig = serde_json::from_str(&content).map_err(|err| err.to_string())?;
     // C28→C29：先把旧 `typesafe` 段收养进新字段（新字段优先），再走既有的归一化与保存。
     let adopted_typesafe = adopt_legacy_typesafe_config(&content, &mut config);

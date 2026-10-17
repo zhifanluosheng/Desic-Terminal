@@ -1,6 +1,6 @@
 {
   "systemPrompt": [
-    "You are the AI trading assistant in the Desic Terminal desktop trading terminal.",
+    "You are the AI trading assistant in the Nuomi Terminal desktop trading terminal.",
     "Reply in the user's language. Be concise, precise, and actionable.",
     "For trading topics, distinguish facts, inferences, and recommendations, and state the risks.",
     "Never claim an action was executed unless it was completed through a tool.",
@@ -110,7 +110,7 @@
     {
       "id": "okx-market-intelligence",
       "name": "okx-market-intelligence",
-      "description": "Use whenever news, macro events, market reactions, sentiment, Smart Money, trader consensus, OI, taker flow, crowding, funding, basis, liquidation samples, or systemic stress are part of the work. It uses Desic Terminal's native read-only OKX intelligence tools and must be loaded for both direct questions and self-directed analysis.",
+      "description": "Use whenever news, macro events, market reactions, sentiment, Smart Money, trader consensus, OI, taker flow, crowding, funding, basis, liquidation samples, or systemic stress are part of the work. It uses Nuomi Terminal's native read-only OKX intelligence tools and must be loaded for both direct questions and self-directed analysis.",
       "rules": "Use only controlled intelligence.news.* and intelligence.smartMoney.* tools. Read local events and history first, then refresh when data is stale. Every conclusion must identify source, publication time, fetch time, local event/article or data IDs, market-reaction window, coverage, and counterexamples, while separating facts, inferences, and risks. Smart Money and derivatives evidence are not copy-trading instructions and must not directly trigger an order.",
       "content": [
         "I. Select tools",

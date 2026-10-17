@@ -113,12 +113,12 @@ export function AppUpdateBadge() {
       <button
         type="button"
         className={`rail-logo${state?.available ? " has-update" : ""}`}
-        aria-label={state?.available ? t("updateAvailable") : "Desic Terminal"}
+        aria-label={state?.available ? t("updateAvailable") : "Nuomi Terminal"}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
-        <img src="/assets/brand/desic-terminal-icon.png" alt="Desic Terminal" />
+        <img src="/assets/brand/desic-terminal-icon.png" alt="Nuomi Terminal" />
         {busy ? <Loader2 className="app-update-logo-spinner spin" size={13} /> : null}
       </button>
       {open ? (

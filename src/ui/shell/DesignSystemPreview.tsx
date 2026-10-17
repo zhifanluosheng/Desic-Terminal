@@ -41,7 +41,7 @@ export function DesignSystemPreview() {
     <main className="design-system-preview">
       <header>
         <div>
-          <small>Desic Terminal · Design system</small>
+          <small>Nuomi Terminal · Design system</small>
           <h1>磷光：三条纪律先于任何组件</h1>
         </div>
         <div className="design-system-preview__switch" role="radiogroup" aria-label="外观">

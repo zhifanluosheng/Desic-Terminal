@@ -171,7 +171,7 @@ export function buildAgentSkeletonBody(fields: { name: string; role: string; res
   const evidenceLine = "只用职责所需的只读证据；没有把握的数据必须标注为缺失，而不是推断。";
   return [
     "## 身份",
-    `${fields.name || "本 Agent"} 是 Desic Terminal 的只读专家 Agent，角色标识 \`${fields.role || "custom"}\`。`,
+    `${fields.name || "本 Agent"} 是 Nuomi Terminal 的只读专家 Agent，角色标识 \`${fields.role || "custom"}\`。`,
     "",
     "## 职责",
     fields.responsibility.trim() || `${fields.name || "本 Agent"} 负责给出本职责范围内的事实、推断与失效条件。`,
