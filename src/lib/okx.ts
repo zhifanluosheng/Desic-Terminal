@@ -417,7 +417,8 @@ export async function clearTradeOpportunities(): Promise<number | null> {
 }
 
 export async function fetchLeverageInfo(request: LeverageInfoRequest): Promise<OkxLeverageInfo[] | null> {
-  return invokeDesktop<OkxLeverageInfo[]>("okx_leverage_info", { request });
+  // 模拟盘未上架的合约会返回 51001；调用方已有降级文案，这里只记 warn，避免弹“前端代码异常”。
+  return invokeDesktop<OkxLeverageInfo[]>("okx_leverage_info", { request }, { quiet: true });
 }
 
 export async function setOkxLeverage(request: SetLeverageRequest): Promise<SetLeverageResponse | null> {

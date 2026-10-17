@@ -3454,10 +3454,10 @@ function TradingTerminal({
   const pendingLiveAccount = pendingLiveAccountScope
     ? accounts.find((item) => accountEnvironmentScopeKey(item) === accountEnvironmentScopeKey(pendingLiveAccountScope))
     : undefined;
-  // 嵌入模式（DSH 面板 iframe）没有原生窗口能力：弹出图表改为页内覆盖层呈现。
+  // 嵌入模式（DSH 面板 iframe）优先弹出原生窗口（DSH 界面之外）；原生窗口创建失败时退回页内覆盖层。
   const [embeddedChartOverlay, setEmbeddedChartOverlay] = useState<{ id: string; symbol: string; timeframe: string } | null>(null);
   const openDetachedChart = useCallback(() => {
-    if (!isTauriRuntime()) {
+    const fallbackToOverlay = () => {
       if (hasBackend()) {
         setEmbeddedChartOverlay({
           id: `embed-${Date.now()}`,
@@ -3465,21 +3465,30 @@ function TradingTerminal({
           timeframe: bar
         });
       }
-      return;
-    }
+    };
     void openChartWindow({
       symbol,
       timeframe: bar,
       accountId: account?.id ?? null,
       environment: effectiveTradeEnvironment
-    }).catch((error) => {
-      logger.error("failed to open detached chart window", error, { symbol, bar });
-      pushNotification({
-        kind: "error",
-        title: uiText("弹出图表失败", "Could not open detached chart"),
-        message: error instanceof Error ? error.message : String(error)
+    })
+      .then((opened) => {
+        if (!opened && !isTauriRuntime()) fallbackToOverlay();
+      })
+      .catch((error) => {
+        // 嵌入模式没有原生窗口时（无图形会话等）降级为页内覆盖层，不弹错误通知。
+        if (!isTauriRuntime()) {
+          fallbackToOverlay();
+          if (!hasBackend()) logger.warn("detached chart window unavailable in embedded mode", error);
+          return;
+        }
+        logger.error("failed to open detached chart window", error, { symbol, bar });
+        pushNotification({
+          kind: "error",
+          title: uiText("弹出图表失败", "Could not open detached chart"),
+          message: error instanceof Error ? error.message : String(error)
+        });
       });
-    });
   }, [account?.id, bar, effectiveTradeEnvironment, pushNotification, symbol]);
   useEffect(() => {
     if (!account) {

@@ -7891,10 +7891,7 @@ async fn open_chart_window(
     app: tauri::AppHandle,
     request: ChartWindowRequest,
 ) -> Result<ChartWindowSummary, String> {
-    // 无头嵌入模式不支持原生独立图表窗口。
-    if is_embedded_mode() {
-        return Err("embedded mode: detached chart window is unavailable".to_string());
-    }
+    // 独立图表窗口是用户主动弹出的，嵌入模式下同样创建原生窗口（主终端仍保持无头）。
     let id = normalize_chart_window_id(request.id);
     let label = format!("chart-{}", id);
     let symbol = if request.symbol.trim().is_empty() {
@@ -7960,9 +7957,6 @@ async fn open_chart_window(
 
 #[tauri::command]
 fn focus_chart_window(app: tauri::AppHandle, id: String) -> Result<bool, String> {
-    if is_embedded_mode() {
-        return Ok(false);
-    }
     let label = format!("chart-{}", normalize_chart_window_id(Some(id)));
     if let Some(window) = app.get_webview_window(&label) {
         let _ = window.show();
@@ -7976,9 +7970,6 @@ fn focus_chart_window(app: tauri::AppHandle, id: String) -> Result<bool, String>
 
 #[tauri::command]
 fn close_chart_window(app: tauri::AppHandle, id: String) -> Result<bool, String> {
-    if is_embedded_mode() {
-        return Ok(false);
-    }
     let id = normalize_chart_window_id(Some(id));
     let label = format!("chart-{}", id);
     {
