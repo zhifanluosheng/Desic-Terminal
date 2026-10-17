@@ -7783,6 +7783,10 @@ fn resize_window_to_work_area(
 
 #[tauri::command]
 fn enter_main_window(app: tauri::AppHandle) -> Result<(), String> {
+    // 无头嵌入模式没有可见窗口：跳过窗口切换，避免在宿主外弹出本体窗口。
+    if is_embedded_mode() {
+        return Ok(());
+    }
     let main = app
         .get_webview_window("main")
         .ok_or_else(|| "main window not found".to_string())?;
@@ -7801,6 +7805,10 @@ fn enter_main_window(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn window_action(app: tauri::AppHandle, action: String) -> Result<bool, String> {
+    // 无头嵌入模式：窗口操作一律短路（close 更不能连带退出被嵌入的后端进程）。
+    if is_embedded_mode() {
+        return Ok(false);
+    }
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "main window not found".to_string())?;
@@ -7883,6 +7891,10 @@ async fn open_chart_window(
     app: tauri::AppHandle,
     request: ChartWindowRequest,
 ) -> Result<ChartWindowSummary, String> {
+    // 无头嵌入模式不支持原生独立图表窗口。
+    if is_embedded_mode() {
+        return Err("embedded mode: detached chart window is unavailable".to_string());
+    }
     let id = normalize_chart_window_id(request.id);
     let label = format!("chart-{}", id);
     let symbol = if request.symbol.trim().is_empty() {
@@ -7948,6 +7960,9 @@ async fn open_chart_window(
 
 #[tauri::command]
 fn focus_chart_window(app: tauri::AppHandle, id: String) -> Result<bool, String> {
+    if is_embedded_mode() {
+        return Ok(false);
+    }
     let label = format!("chart-{}", normalize_chart_window_id(Some(id)));
     if let Some(window) = app.get_webview_window(&label) {
         let _ = window.show();
@@ -7961,6 +7976,9 @@ fn focus_chart_window(app: tauri::AppHandle, id: String) -> Result<bool, String>
 
 #[tauri::command]
 fn close_chart_window(app: tauri::AppHandle, id: String) -> Result<bool, String> {
+    if is_embedded_mode() {
+        return Ok(false);
+    }
     let id = normalize_chart_window_id(Some(id));
     let label = format!("chart-{}", id);
     {
@@ -26331,12 +26349,17 @@ async fn ensure_database_and_workers(app: &tauri::AppHandle) -> bool {
     }
 }
 
+/// 无头/嵌入模式标志：由 `--embedded` 启动参数决定（DSH 面板内嵌场景）。
+fn is_embedded_mode() -> bool {
+    std::env::args().any(|arg| arg == "--embedded")
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     install_boot_panic_hook();
     boot_log("=== Desic Terminal boot start ===");
     // --embedded：无头模式，不创建可见窗口，只初始化运行时 + HTTP 桥。
-    let embedded = std::env::args().any(|a| a == "--embedded");
+    let embedded = is_embedded_mode();
     if embedded {
         boot_log("embedded mode: headless, serving http bridge");
     }
@@ -26705,7 +26728,12 @@ pub fn run() {
             // 记录命令并给主线程上的同步执行计时（卡顿诊断，见 main_thread_watchdog）。
             move |invoke: tauri::ipc::Invoke<tauri::Wry>| main_thread_watchdog::timed_invoke(invoke, &handler)
         });
-    let app = match builder.build(tauri::generate_context!()) {
+    let mut context = tauri::generate_context!();
+    if embedded {
+        // 无头模式不依赖任何窗口：清空窗口声明，避免弹出可见窗口或在隐藏 webview 中重复运行 UI。
+        context.config_mut().app.windows.clear();
+    }
+    let app = match builder.build(context) {
         Ok(app) => app,
         Err(error) => {
             fatal_startup_error(&format!("应用初始化失败：{error}"));
