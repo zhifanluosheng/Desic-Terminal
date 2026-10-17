@@ -143,8 +143,7 @@ fn download_error(error: &reqwest::Error) -> String {
 /// Windows 上重命名目录/文件时，只要内部文件被打开（杀软实时扫描刚解压的大文件很常见），
 /// 就会返回“拒绝访问 (os error 5)”。这里带退避重试，避免安装因瞬时占用失败。
 fn rename_with_retry(from: &Path, to: &Path) -> std::io::Result<()> {
-    // 152MB 引擎/模型刚解压完时，Defender 实时扫描可能持续十几秒；总窗口 ~53s。
-    const DELAYS_MS: [u64; 13] = [100, 200, 300, 500, 800, 1200, 1800, 2500, 3500, 5000, 8000, 12000, 18000];
+    const DELAYS_MS: [u64; 10] = [100, 200, 300, 500, 800, 1200, 1800, 2500, 3500, 5000];
     let mut last: Option<std::io::Error> = None;
     for (index, delay) in DELAYS_MS.iter().enumerate() {
         match fs::rename(from, to) {
@@ -158,6 +157,43 @@ fn rename_with_retry(from: &Path, to: &Path) -> std::io::Result<()> {
         }
     }
     Err(last.unwrap_or_else(|| std::io::Error::other("rename failed")))
+}
+
+fn copy_file_with_retry(from: &Path, to: &Path) -> std::io::Result<()> {
+    const DELAYS_MS: [u64; 8] = [100, 200, 400, 700, 1100, 1600, 2200, 3000];
+    let mut last: Option<std::io::Error> = None;
+    for (index, delay) in DELAYS_MS.iter().enumerate() {
+        match fs::copy(from, to) {
+            Ok(_) => return Ok(()),
+            Err(error) => {
+                last = Some(error);
+                if index + 1 < DELAYS_MS.len() {
+                    std::thread::sleep(Duration::from_millis(*delay));
+                }
+            }
+        }
+    }
+    Err(last.unwrap_or_else(|| std::io::Error::other("copy failed")))
+}
+
+/// 逐文件复制安装文件；`installed.json` 由调用方最后写入（复制到一半不算已安装）。
+fn copy_dir_contents(from: &Path, to: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(to)?;
+    for entry in fs::read_dir(from)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        if name == std::ffi::OsStr::new(MARKER_FILE) {
+            continue;
+        }
+        let source = entry.path();
+        let target = to.join(&name);
+        if entry.file_type()?.is_dir() {
+            copy_dir_contents(&source, &target)?;
+        } else {
+            copy_file_with_retry(&source, &target)?;
+        }
+    }
+    Ok(())
 }
 
 /// 尽力删除目录（被占用时退避重试），失败不抛错，由后续重命名决定结果。
@@ -261,8 +297,8 @@ pub(crate) async fn install_at(
         .await?;
         fs::write(staging.join(MARKER_FILE), INSTALL_ID).map_err(|error| format!("无法写入安装标记：{error}"))?;
 
-        // 换入正式目录，再用静音做一次真实识别自检；加载不起来就回滚。
-        // Windows 上目录内文件被实时扫描/索引时会短暂“拒绝访问”，重命名与删除都带退避重试。
+        // 换入正式目录：不再重命名被实时扫描的大目录（Windows 上必报 os error 5），
+        // 改为新建 current + 逐文件复制（带重试），安装标记最后写入；半成品不会被判定为已安装。
         let current = current_dir(root);
         let previous = root.join("previous");
         {
@@ -272,17 +308,16 @@ pub(crate) async fn install_at(
             crate::blocking_work::run_blocking(move || -> Result<(), String> {
                 remove_dir_best_effort(&previous);
                 if current.exists() {
-                    rename_with_retry(&current, &previous).map_err(|error| format!("无法替换旧版本：{error}"))?;
-                }
-                match rename_with_retry(&staging, &current) {
-                    Ok(()) => Ok(()),
-                    Err(error) => {
-                        if previous.exists() {
-                            let _ = rename_with_retry(&previous, &current);
-                        }
-                        Err(format!("无法启用新版本：{error}"))
+                    if rename_with_retry(&current, &previous).is_err() {
+                        remove_dir_best_effort(&current);
                     }
                 }
+                remove_dir_best_effort(&current);
+                copy_dir_contents(&staging, &current)
+                    .map_err(|error| format!("无法写入安装目录：{error}"))?;
+                fs::write(current.join(MARKER_FILE), INSTALL_ID)
+                    .map_err(|error| format!("无法写入安装标记：{error}"))?;
+                Ok(())
             })
             .await?;
         }

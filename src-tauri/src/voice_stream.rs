@@ -121,6 +121,33 @@ struct Api {
     input_finished: InputFinished,
     /// 必须比函数指针活得久。
     _library: Library,
+    /// Windows：预加载的 onnxruntime 等依赖（防止解析到 System32 里 Windows 自带的旧版本）。
+    _dependencies: Vec<Library>,
+}
+
+/// Windows 的系统目录里有 Windows 自带的 onnxruntime.dll（1.17，API 17）。按名字解析依赖会先命中它，
+/// 而 sherpa-onnx（1.13.8）需要 API 28，会在创建识别器时 abort。这里先把引擎目录里的 onnxruntime
+/// 按绝对路径加载进进程，之后 c-api 的按名解析会复用已加载模块。
+#[cfg(windows)]
+fn preload_engine_dependencies(library_path: &Path) -> Vec<Library> {
+    let Some(dir) = library_path.parent() else { return Vec::new() };
+    let mut loaded = Vec::new();
+    for name in ["onnxruntime_providers_shared.dll", "onnxruntime.dll"] {
+        let candidate = dir.join(name);
+        if !candidate.is_file() {
+            continue;
+        }
+        let result = unsafe {
+            libloading::os::windows::Library::load_with_flags(
+                &candidate,
+                libloading::os::windows::LOAD_WITH_ALTERED_SEARCH_PATH,
+            )
+        };
+        if let Ok(library) = result {
+            loaded.push(Library::from(library));
+        }
+    }
+    loaded
 }
 
 fn open_library(path: &Path) -> Result<Library, String> {
@@ -138,6 +165,10 @@ fn open_library(path: &Path) -> Result<Library, String> {
 
 impl Api {
     fn load(path: &Path) -> Result<Api, String> {
+        #[cfg(windows)]
+        let dependencies = preload_engine_dependencies(path);
+        #[cfg(not(windows))]
+        let dependencies: Vec<Library> = Vec::new();
         let library = open_library(path)?;
         macro_rules! symbol {
             ($name:literal, $ty:ty) => {{
@@ -158,6 +189,7 @@ impl Api {
             destroy_result_json: symbol!("SherpaOnnxDestroyOnlineStreamResultJson", DestroyResultJson),
             input_finished: symbol!("SherpaOnnxOnlineStreamInputFinished", InputFinished),
             _library: library,
+            _dependencies: dependencies,
         })
     }
 }
