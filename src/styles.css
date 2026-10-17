@@ -576,15 +576,6 @@ button {
   z-index: 1;
 }
 
-.rail::after {
-  content: "";
-  width: 1px;
-  flex: 1 1 auto;
-  min-height: 16px;
-  margin: 3px 0 2px;
-  background: rgba(174, 186, 210, 0.16);
-}
-
 .rail-logo {
   width: 40px;
   height: 40px;

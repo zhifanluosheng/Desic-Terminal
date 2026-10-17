@@ -271,9 +271,11 @@ export function VoiceSettings() {
       value: "local",
       title: uiText("本机识别", "On this computer"),
       badge: uiText("离线 · 推荐", "Offline · recommended"),
-      description: localSupported
-        ? uiText(`录音不出本机，不需要 API Key，边说边出字。首次使用需下载约 ${formatMegabytes(summary?.localDownloadBytes ?? 0)}。`, `Audio never leaves this computer, no API key, live text while you speak. First use downloads about ${formatMegabytes(summary?.localDownloadBytes ?? 0)}.`)
-        : uiText("当前系统暂不支持（目前支持 macOS 与 Windows x64）。", "Not supported on this system yet (macOS and Windows x64 only)."),
+      description: !localSupported
+        ? uiText("当前系统暂不支持（目前支持 macOS 与 Windows x64）。", "Not supported on this system yet (macOS and Windows x64 only).")
+        : summary?.localInstalled
+          ? uiText("引擎与模型已安装，录音不出本机，边说边出字。", "Engine and model installed. Audio never leaves this computer.")
+          : uiText(`录音不出本机，不需要 API Key，边说边出字。首次使用需下载约 ${formatMegabytes(summary?.localDownloadBytes ?? 0)}。`, `Audio never leaves this computer, no API key, live text while you speak. First use downloads about ${formatMegabytes(summary?.localDownloadBytes ?? 0)}.`),
       disabled: !localSupported,
     },
     {
