@@ -1,7 +1,7 @@
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { logger } from "../lib/logger";
-import { isTauriRuntime } from "../lib/tauri";
+import { hasBackendAsync, invokeDesktop, isTauriRuntime } from "../lib/tauri";
 import type { MarketAssetsSummary } from "../types";
 
 type SymbolIconProps = {
@@ -29,10 +29,9 @@ function fallbackIconPath(base: string, cacheDir?: string | null) {
 function marketAssetSrc(path?: string | null) {
   if (!path) return "";
   if (!isTauriRuntime()) {
-    const normalized = path.replace(/\\/g, "/");
-    const marker = "/cache/market-assets/";
-    const markerIndex = normalized.toLowerCase().indexOf(marker);
-    return markerIndex >= 0 ? normalized.slice(markerIndex + 1) : normalized;
+    // iframe 嵌入模式：页面由 HTTP 桥托管，没有 /cache 静态路由（相对路径请求会被 403）。
+    // 图标统一走桥的 data URL（见 loadIconDataUrl），这里不再猜相对路径。
+    return "";
   }
   try {
     return convertFileSrc(path, "asset");
@@ -51,7 +50,7 @@ function loadIconDataUrl(path: string, base: string) {
   const canDownload = /^[A-Z0-9]{1,32}$/.test(normalizedBase);
   const request = (async () => {
     try {
-      const local = await invoke<string>("market_icon_data_url", { path });
+      const local = await invokeDesktop<string>("market_icon_data_url", { path }, { quiet: true });
       if (local) {
         iconDataUrls.set(path, local);
         iconDownloadFailures.delete(normalizedBase);
@@ -68,7 +67,7 @@ function loadIconDataUrl(path: string, base: string) {
     const failedAt = iconDownloadFailures.get(normalizedBase) ?? 0;
     if (Date.now() - failedAt < ICON_DOWNLOAD_RETRY_MS) return null;
     try {
-      const downloaded = await invoke<string>("ensure_market_icon_data_url", { base: normalizedBase });
+      const downloaded = await invokeDesktop<string>("ensure_market_icon_data_url", { base: normalizedBase }, { quiet: true });
       if (downloaded) {
         iconDataUrls.set(path, downloaded);
         iconDownloadFailures.delete(normalizedBase);
@@ -98,24 +97,29 @@ export function SymbolIcon({ base, iconPath, cached, cacheDir }: SymbolIconProps
   useEffect(() => {
     setFailed(false);
     setDataUrl(iconDataUrls.get(resolvedIconPath) ?? "");
-    if (!resolvedIconPath || !isTauriRuntime()) return;
+    if (!resolvedIconPath) return;
     let cancelled = false;
-    void loadIconDataUrl(resolvedIconPath, base)
-      .then((value) => {
-        if (!cancelled && value) {
-          setDataUrl(value);
-          setFailed(false);
-        }
-        if (!cancelled && !value && cached) {
-          logger.warn("market icon cache missing", { base, iconPath: resolvedIconPath });
-        }
-      })
-      .catch((error) => logger.warn("market icon data url failed", {
-        error: error instanceof Error ? error.message : String(error),
-        base,
-        iconPath: resolvedIconPath,
-        cached
-      }));
+    void (async () => {
+      // 原生（Tauri）与嵌入（HTTP 桥）都走 data URL；纯浏览器预览无后端时跳过。
+      if (!(await hasBackendAsync())) return;
+      if (cancelled) return;
+      const value = await loadIconDataUrl(resolvedIconPath, base).catch((error) => {
+        logger.warn("market icon data url failed", {
+          error: error instanceof Error ? error.message : String(error),
+          base,
+          iconPath: resolvedIconPath,
+          cached
+        });
+        return null;
+      });
+      if (cancelled) return;
+      if (value) {
+        setDataUrl(value);
+        setFailed(false);
+      } else if (cached) {
+        logger.warn("market icon cache missing", { base, iconPath: resolvedIconPath });
+      }
+    })();
     return () => {
       cancelled = true;
     };

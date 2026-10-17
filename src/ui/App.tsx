@@ -259,7 +259,8 @@ import {
 } from "../lib/marketHotStore";
 import { loadNotificationSettings, saveFeishuConfig, testFeishuNotification } from "../lib/notifications";
 import { classifyAlgoPendingOrderGroup, classifyAlgoTriggerPurpose, classifyOrdinaryPendingOrderGroup, isOrdinaryPendingOrder, mergePendingAlgoOrders } from "../lib/pendingOrderClassification";
-import { DATA_ROOT_MIGRATION_EVENT, cancelDataRootMigration, cancelRunningDataRootMigration, cleanupOldDataRoot, dataRootBootstrapState, dataRootMigrationStatus, dataRootOverview, finalizeDataRootBootstrap, getActiveTauriListenerCounts, hasBackendAsync, invokeDesktop, invokeOptional, isTauriRuntime, listenOptional, pickDataRootDirectory, requestDataRootMigration, restartApp, runDataRootMigration, type DataRootMigrationPhase, type DataRootMigrationProgress, type DataRootOverview } from "../lib/tauri";
+import { bridgeEventStats, DATA_ROOT_MIGRATION_EVENT, cancelDataRootMigration, cancelRunningDataRootMigration, cleanupOldDataRoot, dataRootBootstrapState, dataRootMigrationStatus, dataRootOverview, finalizeDataRootBootstrap, getActiveTauriListenerCounts, hasBackendAsync, invokeDesktop, invokeOptional, isTauriRuntime, listenOptional, pickDataRootDirectory, requestDataRootMigration, restartApp, runDataRootMigration, type DataRootMigrationPhase, type DataRootMigrationProgress, type DataRootOverview } from "../lib/tauri";
+import { marketEventStats } from "../lib/marketEventBus";
 import { useTranslation } from "react-i18next";
 
 export type UiTranslation = ReturnType<typeof useTranslation>["t"];
@@ -2280,6 +2281,10 @@ function TradingTerminal({
     bar,
     renderCount: terminalRenderCountRef.current,
     marketEvents: { ...marketEventCountersRef.current },
+    bridgeEvents: { ...bridgeEventStats.byEvent },
+    bridgeLastAtMs: bridgeEventStats.lastAt ? Date.now() - bridgeEventStats.lastAt : null,
+    marketBusEvents: { ...marketEventStats.byType },
+    marketBusLastAtMs: marketEventStats.lastAt ? Date.now() - marketEventStats.lastAt : null,
     activeTauriListeners: getActiveTauriListenerCounts(),
     candles: hot.candles.length,
     trades: hot.trades.length,

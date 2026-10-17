@@ -160,6 +160,20 @@ let sharedEventSourceSeq = 0;
 let sharedEventSourceRefs = 0;
 const sharedEventHandlers = new Map<string, Set<(payload: unknown) => void>>();
 
+/** 诊断计数（内存样本用）：桥事件流到达前端的帧数（按事件名），用于区分"桥没推"与"前端没消费"。 */
+export const bridgeEventStats = { frames: 0, lastAt: 0, byEvent: {} as Record<string, number> };
+
+/** 桥 SSE 帧的 payload 是事件的 JSON 文本；解析回对象以对齐原生 listen 的负载语义。 */
+function parseBridgePayload(raw: string): unknown {
+  const trimmed = raw.trim();
+  if (!trimmed || (trimmed[0] !== "{" && trimmed[0] !== "[")) return raw;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return raw;
+  }
+}
+
 function ensureSharedEventSource(): EventSource {
   if (sharedEventSource) return sharedEventSource;
   const es = new EventSource(`${HTTP_BRIDGE_ORIGIN}/api/events`);
@@ -167,13 +181,21 @@ function ensureSharedEventSource(): EventSource {
     try {
       const frame = JSON.parse(ev.data) as { seq: number; event: string; payload: unknown };
       if (frame.seq > sharedEventSourceSeq) sharedEventSourceSeq = frame.seq;
+      bridgeEventStats.frames += 1;
+      bridgeEventStats.lastAt = Date.now();
+      bridgeEventStats.byEvent[frame.event] = (bridgeEventStats.byEvent[frame.event] ?? 0) + 1;
+      const payload = typeof frame.payload === "string" ? parseBridgePayload(frame.payload) : frame.payload;
       const handlers = sharedEventHandlers.get(frame.event);
       if (handlers) {
-        for (const h of handlers) h(frame.payload);
+        for (const h of handlers) h(payload);
       }
     } catch {
       // 非 JSON 帧（如心跳）忽略。
     }
+  };
+  es.onerror = () => {
+    // 断线后重连（浏览器自动重连；seq 用于回放，桥侧支持 ?since）。
+    sharedEventSource = null;
   };
   es.onerror = () => {
     // 断线后重连（浏览器自动重连；seq 用于回放，桥侧支持 ?since）。

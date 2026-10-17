@@ -8,7 +8,13 @@ const handlers = new Set<MarketEventHandler>();
 let attachPromise: Promise<void> | null = null;
 let detach: (() => void) | null = null;
 
+/** 诊断计数（内存样本用）：分发给订阅者的市场事件数（按类型），与桥帧计数对比可定位订阅断点。 */
+export const marketEventStats = { events: 0, lastAt: 0, byType: {} as Record<string, number> };
+
 function dispatch(event: MarketEvent) {
+  marketEventStats.events += 1;
+  marketEventStats.lastAt = Date.now();
+  marketEventStats.byType[event.type] = (marketEventStats.byType[event.type] ?? 0) + 1;
   for (const handler of [...handlers]) {
     try {
       handler(event);
