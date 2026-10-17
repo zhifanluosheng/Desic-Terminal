@@ -26735,6 +26735,12 @@ pub fn run() {
     app.run(|app_handle, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = event {
             boot_log("run event: ExitRequested");
+            // 嵌入模式：独立图表窗口关闭（最后一个窗口）不能带走后台进程——
+            // DSH 面板始终依赖 127.0.0.1:17899 桥；退出由宿主/用户决定。
+            if is_embedded_mode() {
+                api.prevent_exit();
+                return;
+            }
             let runtime = app_handle.state::<AiRuntime>().inner().clone();
             if runtime.shutdown_started.swap(true, Ordering::AcqRel) {
                 return;
