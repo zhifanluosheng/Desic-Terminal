@@ -1,0 +1,59 @@
+{
+  "name": "dsh-desic-terminal",
+  "version": "0.1.0",
+  "description": "Desic Terminal 工作台 —— 把本机 Desic-Terminal（加密永续合约交易终端）以整页 iframe 面板嵌入 DSH Desktop；前端经本机 127.0.0.1:17899 HTTP 桥与 Rust 后端通信。",
+  "keywords": [
+    "deepseek",
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "workbench",
+    "desic",
+    "trading",
+    "terminal",
+    "交易终端"
+  ],
+  "license": "MIT",
+  "author": "xiazhi88",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json",
+    "./cordis.patch.yml": "./cordis.patch.yml"
+  },
+  "files": [
+    "src",
+    "lib",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xiazhi88/Desic-Terminal.git"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "check": "node --check src/index.js && node --check lib/client.js",
+    "test": "node --test test/host-handlers.test.mjs",
+    "pack:check": "node scripts/verify-package.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "dsh-desktop-workbenches"
+      ]
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.2 <5.0.0-0",
+    "@deepseek-ai/dsh-host-webserver": ">=0.1.6-alpha.2 <0.2.0-0"
+  }
+}

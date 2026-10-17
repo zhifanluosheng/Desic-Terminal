@@ -1,0 +1,7 @@
+# dsh-desic-terminal bundle patch —— 标准工作台形态：
+# 只把服务端入口插入 Harness 插件树；业务面板由客户端
+# desktopWorkbenches.register() 注册，宿主负责侧边栏入口、模式切换、
+# 会话归属与恢复，这里不需要也不应覆盖任何已有插件条目。
+- insert:
+    - id: desic-terminal            # 插件条目 id（仅用于在插件树里定位这一行）
+      name: dsh-desic-terminal      # 必须写 npm 包名，Node 才能解析到安装的代码
