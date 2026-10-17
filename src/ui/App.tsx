@@ -259,7 +259,7 @@ import {
 } from "../lib/marketHotStore";
 import { loadNotificationSettings, saveFeishuConfig, testFeishuNotification } from "../lib/notifications";
 import { classifyAlgoPendingOrderGroup, classifyAlgoTriggerPurpose, classifyOrdinaryPendingOrderGroup, isOrdinaryPendingOrder, mergePendingAlgoOrders } from "../lib/pendingOrderClassification";
-import { DATA_ROOT_MIGRATION_EVENT, cancelDataRootMigration, cancelRunningDataRootMigration, cleanupOldDataRoot, dataRootBootstrapState, dataRootMigrationStatus, dataRootOverview, finalizeDataRootBootstrap, getActiveTauriListenerCounts, invokeDesktop, invokeOptional, isTauriRuntime, listenOptional, pickDataRootDirectory, requestDataRootMigration, restartApp, runDataRootMigration, type DataRootMigrationPhase, type DataRootMigrationProgress, type DataRootOverview } from "../lib/tauri";
+import { DATA_ROOT_MIGRATION_EVENT, cancelDataRootMigration, cancelRunningDataRootMigration, cleanupOldDataRoot, dataRootBootstrapState, dataRootMigrationStatus, dataRootOverview, finalizeDataRootBootstrap, getActiveTauriListenerCounts, hasBackendAsync, invokeDesktop, invokeOptional, isTauriRuntime, listenOptional, pickDataRootDirectory, requestDataRootMigration, restartApp, runDataRootMigration, type DataRootMigrationPhase, type DataRootMigrationProgress, type DataRootOverview } from "../lib/tauri";
 import { useTranslation } from "react-i18next";
 
 export type UiTranslation = ReturnType<typeof useTranslation>["t"];
@@ -1002,6 +1002,12 @@ function StartupGate({ onEnter, previewFailure }: { onEnter: (assets?: MarketAss
 
       updateCheck("kline", { status: "running", detail: t("common:startupCheckingCandles", { count: watchSymbols.length }) });
       if (!isTauriRuntime()) {
+        // 嵌入式 iframe（HTTP 桥）没有 Tauri 运行时但后端可用：异步触发一轮完整性校验，
+        // 让本地 K 线在启动阶段自愈（与原生启动检查对齐），且不阻塞进入终端。
+        if (await hasBackendAsync()) {
+          void syncKlineIntegrity(watchSymbols, KLINE_INTEGRITY_INTERVALS, false, KLINE_STARTUP_RECENT_CHECK_HOURS, KLINE_REQUIRED_DAYS)
+            .catch((error) => logger.error("embedded startup kline sync failed", error, { watchSymbols }));
+        }
         updateCheck("kline", { status: "passed", detail: t("common:startupBrowserCandlesSkipped") });
       } else {
         let unlistenKline: (() => void) | null = null;
@@ -3185,26 +3191,31 @@ function TradingTerminal({
   }, [symbol, proxyRevision, previewAccounts, previewPendingOrder, previewMarketConsistency]);
 
   useEffect(() => {
-    if (!isTauriRuntime()) {
-      replaceMarketCandles(buildTerminalPreviewCandles(symbol, bar), `${symbol}\u0000${bar}`);
-      return;
-    }
-    if (previewAccounts.length > 0) return;
     let cancelled = false;
-    derivedCandleRefreshRef.current = 0;
-    replaceMarketCandles([], `${symbol}\u0000${bar}`);
-    setMarketCandleLoadError(null);
-    const request = requestMarketCandles(bar);
-    void request.promise
-      .then((items) => {
+    const requestKey = `${symbol}\u0000${bar}`;
+    const loadSelectedInterval = async () => {
+      // iframe 嵌入模式没有 Tauri 运行时，但 HTTP 桥后端实际可用：
+      // 只有确认彻底没有后端时才回退到预览合成数据，避免污染嵌入式图表的真实 K 线。
+      if (!isTauriRuntime() && !(await hasBackendAsync())) {
+        if (cancelled) return;
+        replaceMarketCandles(buildTerminalPreviewCandles(symbol, bar), requestKey);
+        return;
+      }
+      if (previewAccounts.length > 0) return;
+      if (cancelled) return;
+      derivedCandleRefreshRef.current = 0;
+      replaceMarketCandles([], requestKey);
+      setMarketCandleLoadError(null);
+      const request = requestMarketCandles(bar);
+      try {
+        const items = await request.promise;
         if (cancelled) return;
         if (items.length === 0) {
           throw new Error(`No ${bar} candle data returned for ${symbol}`);
         }
-        replaceMarketCandles(items, `${symbol}\u0000${bar}`);
+        replaceMarketCandles(items, requestKey);
         setMarketCandleLoadError(null);
-      })
-      .catch((error) => {
+      } catch (error) {
         logger.error("failed to load candles for selected interval", error, { symbol, bar });
         if (!cancelled) {
           setMarketCandleLoadError({
@@ -3213,7 +3224,9 @@ function TradingTerminal({
             message: error instanceof Error ? error.message : String(error)
           });
         }
-      });
+      }
+    };
+    void loadSelectedInterval();
     return () => {
       cancelled = true;
     };
