@@ -27889,3 +27889,7 @@ button {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* 嵌入模式：弹出图表以页内覆盖层呈现（无原生窗口）。 */
+.embedded-chart-overlay { position: fixed; inset: 0; z-index: 4000; background: #050506; }
+.embedded-chart-overlay > .chart-window-page { height: 100%; width: 100%; }

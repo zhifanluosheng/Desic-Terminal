@@ -149,7 +149,7 @@ window.__ModuleLoader__.load({
 
       const launching = phase === 'launching'
       return h('div', { className: 'dst-shell' },
-        mounted ? h('iframe', { key: frameKey, className: 'dst-frame', src: BRIDGE_URL, title: 'Desic Terminal' }) : null,
+        mounted ? h('iframe', { key: frameKey, className: 'dst-frame', src: BRIDGE_URL, title: 'Desic Terminal', allow: 'microphone; autoplay; fullscreen; clipboard-read; clipboard-write', allowFullScreen: true }) : null,
         !mounted ? h('div', { className: 'dst-center' },
           h('div', { className: 'dst-card' },
             h('h2', null, 'Desic Terminal'),

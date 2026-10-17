@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "rea
 import type { Candle } from "../../types";
 import type { TradingChartHandle } from "../chartAdapter";
 import { orderBookWallsFor } from "../../lib/orderBookWalls";
-import { invokeDesktop, isTauriRuntime } from "../../lib/tauri";
+import { hasBackend, invokeDesktop } from "../../lib/tauri";
 import { markActiveIntelligenceInstrument, queryDerivatives } from "../../lib/intelligence";
 import { OrderFlowPrimitive, type VolumeProfileData } from "./OrderFlowPrimitive";
 import {
@@ -144,7 +144,7 @@ export function useOrderFlowLayer({ chartRef, chartVersion, enabled, symbol, tim
 
   // 让情报采集器持续同步当前交易对的主动成交与清算。
   useEffect(() => {
-    if (!enabled || !isTauriRuntime()) return;
+    if (!enabled || !hasBackend()) return;
     void markActiveIntelligenceInstrument(symbol).catch(() => undefined);
   }, [enabled, symbol]);
 
@@ -159,7 +159,7 @@ export function useOrderFlowLayer({ chartRef, chartVersion, enabled, symbol, tim
       setProfileCoverage(null);
       return;
     }
-    if (!isTauriRuntime()) return;
+    if (!hasBackend()) return;
     let active = true;
     const cacheKey = `${symbol}:${barSeconds}`;
     const cached = profileCache.get(cacheKey);
@@ -207,7 +207,7 @@ export function useOrderFlowLayer({ chartRef, chartVersion, enabled, symbol, tim
       setTakerNotice(null);
       return;
     }
-    if (!isTauriRuntime()) {
+    if (!hasBackend()) {
       setTakerNotice(text("Order flow data needs the desktop app", "订单流数据仅在桌面端可用"));
       return;
     }

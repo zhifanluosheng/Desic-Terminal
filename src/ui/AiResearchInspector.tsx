@@ -42,7 +42,7 @@ import { parseMarketCandles } from "../lib/aiCandleSeries";
 import { useMarketHotStore } from "../lib/marketHotStore";
 import { fetchCandles, fetchFundingRate, fetchTicker, loadMarketRadarResearchScores } from "../lib/okx";
 import { buildMarketRadarRows } from "../lib/marketRadar";
-import { isTauriRuntime } from "../lib/tauri";
+import { hasBackend } from "../lib/tauri";
 import { resolvedLocale } from "../i18n/runtime";
 import { IntelligenceEvidenceChart } from "./IntelligenceEvidenceChart";
 import type { AiResearchArtifact, AiUiMessage } from "./AiMessageProcess";
@@ -615,7 +615,7 @@ function MarketOverviewDashboard({ symbol, onOpenTrading, uiText }: { symbol?: s
   useEffect(() => {
     let active = true;
     void loadIntelligenceSummary().then((next) => { if (active) setSummary(next); });
-    if (isTauriRuntime() && symbol) {
+    if (hasBackend() && symbol) {
       void Promise.all([fetchTicker(symbol).catch(() => null), fetchCandles(symbol, "1H", 100).catch(() => []), fetchFundingRate(symbol).catch(() => null)]).then(([nextTicker, nextCandles, nextFunding]) => {
         if (!active) return;
         if (nextTicker) setFallbackTicker(nextTicker);

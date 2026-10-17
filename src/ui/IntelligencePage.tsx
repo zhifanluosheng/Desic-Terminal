@@ -58,7 +58,7 @@ import {
   type NewsReadState
 } from "../lib/intelligence";
 import { logger } from "../lib/logger";
-import { invokeDesktop, isTauriRuntime } from "../lib/tauri";
+import { hasBackend, invokeDesktop } from "../lib/tauri";
 import { IntelligenceEvidenceChart } from "./IntelligenceEvidenceChart";
 import { SymbolIcon, SymbolLabel } from "./SymbolIcon";
 import { TerminalSelect } from "./TerminalSelect";
@@ -776,7 +776,7 @@ export function IntelligencePage({ accounts, marketAssets, selectedAccountId, se
 
   useEffect(() => {
     void loadIntelligenceSummary().then((value) => {
-      applySummary(value ?? (!isTauriRuntime() && eligibleAccounts[0] ? previewSummary(eligibleAccounts[0].id) : null));
+      applySummary(value ?? (!hasBackend() && eligibleAccounts[0] ? previewSummary(eligibleAccounts[0].id) : null));
     }).catch((error) => {
       logger.error("intelligence summary load failed", error);
       setStatus(error instanceof Error ? error.message : "市场情报加载失败");
@@ -791,7 +791,7 @@ export function IntelligencePage({ accounts, marketAssets, selectedAccountId, se
   }, [selectedSymbol]);
 
   useEffect(() => {
-    if (!isTauriRuntime() || !derivativesSymbol) return;
+    if (!hasBackend() || !derivativesSymbol) return;
     void markActiveIntelligenceInstrument(derivativesSymbol).catch((error) => {
       logger.warn("mark active intelligence instrument failed", error);
     });
@@ -873,7 +873,7 @@ export function IntelligencePage({ accounts, marketAssets, selectedAccountId, se
     if (!summary) return;
     setSettingsDraft({ ...summary.settings, extraInstruments: [...summary.settings.extraInstruments] });
     setSettingsOpen(true);
-    if (!isTauriRuntime()) {
+    if (!hasBackend()) {
       setBriefingProfiles([]);
       return;
     }
@@ -908,7 +908,7 @@ export function IntelligencePage({ accounts, marketAssets, selectedAccountId, se
   const loadNewsEvents = useCallback(async () => {
     setBusy("news-events");
     try {
-      if (!isTauriRuntime()) {
+      if (!hasBackend()) {
         const items = previewNewsEvents().filter((record) => {
           const title = textField(record, "title", "summary").toLowerCase();
           const coins = Array.isArray(record.coins) ? record.coins.map(String) : [];
@@ -940,7 +940,7 @@ export function IntelligencePage({ accounts, marketAssets, selectedAccountId, se
   const openEvent = useCallback(async (record: IntelligenceRecord) => {
     setSelectedEvent(record);
     setEventDetail(record);
-    if (!isTauriRuntime()) return;
+    if (!hasBackend()) return;
     setBusy("event-detail");
     try {
       const response = await readNewsEvent(recordId(record, "event"));
@@ -965,7 +965,7 @@ export function IntelligencePage({ accounts, marketAssets, selectedAccountId, se
     const range = derivativesPeriod === "5m" ? 24 * 3_600_000 : derivativesPeriod === "1H" ? 7 * 86_400_000 : derivativesPeriod === "4H" ? 30 * 86_400_000 : 180 * 86_400_000;
     const query = { instId: derivativesSymbol, period: derivativesPeriod, startTime: now - range, endTime: now, limit: derivativesPeriod === "5m" ? 288 : 240, localOnly: !remote } as const;
     try {
-      if (!isTauriRuntime()) {
+      if (!hasBackend()) {
         if (requestId !== derivativesRequestIdRef.current) return;
         setPositioning(previewMarket.positioning);
         setTakerFlow(previewMarket.takerFlow);
@@ -1038,7 +1038,7 @@ export function IntelligencePage({ accounts, marketAssets, selectedAccountId, se
     const feedMode = mode;
     setBusy("news-feed");
     try {
-      if (!isTauriRuntime()) {
+      if (!hasBackend()) {
         const source = feedMode === "events" ? previewNewsEvents() : previewSummary(accountId || "preview").latestNews;
         const items = source
           .filter((record) => {
@@ -1093,7 +1093,7 @@ export function IntelligencePage({ accounts, marketAssets, selectedAccountId, se
   }, [accountId, newsCoin, newsDate, newsImportance, newsKeyword, newsMode, newsPage, newsRelevantOnly, onNewsUnreadCountChange]);
 
   const refreshNewsFeed = useCallback(async () => {
-    if (isTauriRuntime() && accountId) {
+    if (hasBackend() && accountId) {
       setBusy("news-sync");
       try {
         await syncIntelligence(accountId, "news");
@@ -1143,7 +1143,7 @@ export function IntelligencePage({ accounts, marketAssets, selectedAccountId, se
     const requestId = ++calendarRequestIdRef.current;
     const start = new Date(month.getFullYear(), month.getMonth(), 1);
     const end = new Date(month.getFullYear(), month.getMonth() + 1, 1);
-    if (!isTauriRuntime()) {
+    if (!hasBackend()) {
       const preview = previewSummary(eligibleAccounts[0]?.id ?? "preview").economicEvents;
       const monthly = preview.filter((record) => {
         const timestamp = calendarEventTimestamp(record);
@@ -1300,7 +1300,7 @@ export function IntelligencePage({ accounts, marketAssets, selectedAccountId, se
     setTraderEvidence(EMPTY_TRADER_EVIDENCE);
     const authorId = textField(record, "authorId", "id");
     if (!authorId) return;
-    if (!isTauriRuntime()) {
+    if (!hasBackend()) {
       setTraderEvidence(previewTraderEvidence(record));
       setStatus("交易员证据已加载");
       return;

@@ -57,7 +57,7 @@ import {
 import { OPEN_AI_SESSION_EVENT } from "../../lib/voice/voiceAgent";
 import { logger } from "../../lib/logger";
 import { createDeferredCleanupSlot } from "../../lib/deferredCleanup";
-import { isTauriRuntime } from "../../lib/tauri";
+import { hasBackend } from "../../lib/tauri";
 import { AI_RESEARCH_PROMPT_EVENT } from "../../lib/shellEvents";
 import {
   AiEvidenceReferences,
@@ -768,7 +768,7 @@ export function AiResearchWorkspace({ active = true, preview, onOpenSettings, on
       }))
       .filter((message) => message.content.trim().length > 0);
 
-    if (!isTauriRuntime()) {
+    if (!hasBackend()) {
       setMessages((items) => [
         ...items,
         userMessage,

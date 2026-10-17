@@ -14,7 +14,7 @@ import {
 } from "../lib/okx";
 import { fmtPrice } from "../lib/format";
 import { useBump } from "./useBump";
-import { isTauriRuntime } from "../lib/tauri";
+import { hasBackend, isTauriRuntime } from "../lib/tauri";
 import { logger } from "../lib/logger";
 import {
   createChartWorkspaceDocument,
@@ -65,7 +65,12 @@ function activePane(document: ChartWorkspaceDocument): ChartWorkspacePane {
   return document.panes.find((pane) => pane.id === document.activePaneId) ?? document.panes[0];
 }
 
-export function ChartWindowWorkspacePage({ initialWindowLabel }: { initialWindowLabel?: string | null }) {
+export function ChartWindowWorkspacePage({ initialWindowLabel, seedSymbol, seedTimeframe, onClose }: {
+  initialWindowLabel?: string | null;
+  seedSymbol?: string;
+  seedTimeframe?: string;
+  onClose?: () => void;
+}) {
   const windowId = useMemo(() => getWindowId(initialWindowLabel), [initialWindowLabel]);
   const storageId = useMemo(() => workspaceStorageId(windowId), [windowId]);
   const [backendState, setBackendState] = useState<ChartWindowState | null>(null);
@@ -100,8 +105,8 @@ export function ChartWindowWorkspacePage({ initialWindowLabel }: { initialWindow
         const seed = {
           id: storageId,
           name: "独立图表工作区",
-          symbol: matched?.symbol || DEFAULT_SYMBOL,
-          timeframe: matched?.timeframe || DEFAULT_TIMEFRAME,
+          symbol: matched?.symbol || seedSymbol || DEFAULT_SYMBOL,
+          timeframe: matched?.timeframe || seedTimeframe || DEFAULT_TIMEFRAME,
         };
         const persisted = savedWorkspace ? parseChartWorkspaceDocument(savedWorkspace.layout, seed) : createChartWorkspaceDocument(seed);
         const restored = savedWorkspace
@@ -122,10 +127,12 @@ export function ChartWindowWorkspacePage({ initialWindowLabel }: { initialWindow
         if (!cancelled && workspaceLoadEpochRef.current === epoch) setReady(true);
       });
     return () => { cancelled = true; };
-  }, [storageId, windowId]);
+  }, [storageId, windowId, seedSymbol, seedTimeframe]);
 
   useEffect(() => {
     if (!ready) return;
+    // 嵌入覆盖层是临时视图，不写入独立图表窗口的工作区/窗口状态。
+    if (onClose) return;
     const handle = window.setTimeout(() => {
       // A pane popped out from another detached workspace is a temporary
       // inspection window. Its layout must not become a restorable workspace
@@ -155,10 +162,10 @@ export function ChartWindowWorkspacePage({ initialWindowLabel }: { initialWindow
       void updateChartWindowState(state).catch((error) => logger.error("failed to persist detached chart window state", error, { windowId }));
     }, 500);
     return () => window.clearTimeout(handle);
-  }, [accountId, backendState?.id, backendState?.label, environment, paneSizing, ready, storageId, windowId, workspace]);
+  }, [accountId, backendState?.id, backendState?.label, environment, onClose, paneSizing, ready, storageId, windowId, workspace]);
 
   useEffect(() => {
-    if (!ready || !isTauriRuntime()) return;
+    if (!ready || !hasBackend()) return;
     const consumerId = `chart-window:${windowId}`;
     void registerMarketConsumer({
       consumerId,
@@ -191,10 +198,18 @@ export function ChartWindowWorkspacePage({ initialWindowLabel }: { initialWindow
     void import("@tauri-apps/api/window").then(({ getCurrentWindow }) => void getCurrentWindow().toggleMaximize());
   }, []);
   const close = useCallback(() => {
+    if (onClose) {
+      onClose();
+      return;
+    }
     if (!isTauriRuntime()) return;
     void import("@tauri-apps/api/window").then(({ getCurrentWindow }) => void getCurrentWindow().close());
-  }, []);
+  }, [onClose]);
   const detachPane = useCallback((paneId: string) => {
+    if (!isTauriRuntime()) {
+      // 嵌入覆盖层没有原生窗口：暂不支持把单格“弹”成独立窗口。
+      return;
+    }
     const pane = workspace.panes.find((item) => item.id === paneId);
     if (!pane) return;
     void openChartWindow({ symbol: pane.symbol, timeframe: pane.timeframe, accountId, environment, singlePane: true })

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import clsx from "clsx";
+import { hasBackendAsync } from "../../lib/tauri";
 import { DEFAULT_CORRECTIONS, sanitizeEntries, type LexiconEntry } from "../../lib/voice/lexicon";
 import { readLexicon, saveLexicon, subscribeLexicon } from "../../lib/voice/lexiconStore";
 import {
@@ -151,7 +152,16 @@ export function VoiceSettings() {
   const [lexicon, setLexicon] = useState<LexiconEntry[]>(() => readLexicon());
   const [newFrom, setNewFrom] = useState("");
   const [newTo, setNewTo] = useState("");
-  const desktop = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  const [desktop, setDesktop] = useState(() => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window);
+  useEffect(() => {
+    if (desktop) return;
+    let active = true;
+    // 嵌入模式（DSH 面板 iframe）通过 HTTP 桥提供同一套语音能力。
+    void hasBackendAsync().then((available) => {
+      if (active && available) setDesktop(true);
+    });
+    return () => { active = false; };
+  }, [desktop]);
 
   useEffect(() => subscribeVoicePreference(setPreference), []);
   useEffect(() => subscribeLexicon(setLexicon), []);

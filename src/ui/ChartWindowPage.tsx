@@ -723,7 +723,12 @@ function LegacySingleChartWindowPage({ initialWindowLabel }: { initialWindowLabe
   );
 }
 
-export function ChartWindowPage({ initialWindowLabel }: { initialWindowLabel?: string | null }) {
+export function ChartWindowPage({ initialWindowLabel, seedSymbol, seedTimeframe, onClose }: {
+  initialWindowLabel?: string | null;
+  seedSymbol?: string;
+  seedTimeframe?: string;
+  onClose?: () => void;
+}) {
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     void listenOptional<{ resolvedLanguage?: string }>("ui:locale-changed", (event) => {
@@ -731,5 +736,5 @@ export function ChartWindowPage({ initialWindowLabel }: { initialWindowLabel?: s
     }).then((cleanup) => { unlisten = cleanup; });
     return () => unlisten?.();
   }, []);
-  return <ChartWindowWorkspacePage initialWindowLabel={initialWindowLabel} />;
+  return <ChartWindowWorkspacePage initialWindowLabel={initialWindowLabel} seedSymbol={seedSymbol} seedTimeframe={seedTimeframe} onClose={onClose} />;
 }

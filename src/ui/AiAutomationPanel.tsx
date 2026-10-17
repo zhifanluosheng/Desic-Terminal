@@ -133,7 +133,7 @@ import { filterInternalAiToolEvents } from "../lib/aiToolEvents";
 import { resolveAiAutomationRunError } from "../lib/aiAgentTrace";
 import { createDeferredCleanupSlot } from "../lib/deferredCleanup";
 import { logger } from "../lib/logger";
-import { invokeDesktop, isTauriRuntime, listenOptional } from "../lib/tauri";
+import { hasBackend, invokeDesktop, listenOptional } from "../lib/tauri";
 import { formatLocalizedDate, formatLocalizedNumber, i18n } from "../i18n/runtime";
 import { SymbolIcon, symbolBase } from "./SymbolIcon";
 
@@ -5313,7 +5313,7 @@ function AiAutomationPanelComponent({
     const cached = automationSectionCache.get(section);
     if (cached) applySectionResponse(section, cached);
     if (cached && !force) return Promise.resolve();
-    if (!isTauriRuntime()) return Promise.resolve();
+    if (!hasBackend()) return Promise.resolve();
     const inFlight = sectionLoadPromisesRef.current.get(section);
     if (inFlight) return inFlight;
     if (!silent) setSectionLoading(section);
@@ -5341,7 +5341,7 @@ function AiAutomationPanelComponent({
 
   // Agent 库读取：桌面端才有命令；浏览器/预览态直接跳过，不写错误态。
   const loadAgentLibrary = useCallback(async (): Promise<AiAgentSummary[]> => {
-    if (!isTauriRuntime()) return [];
+    if (!hasBackend()) return [];
     setAgentsLoading(true);
     try {
       const next = await listAiAgents();
@@ -5360,7 +5360,7 @@ function AiAutomationPanelComponent({
 
   const refreshRunStatuses = useCallback(async (ids: string[]) => {
     const uniqueIds = [...new Set(ids.filter(Boolean))];
-    if (!isTauriRuntime() || uniqueIds.length === 0) return;
+    if (!hasBackend() || uniqueIds.length === 0) return;
     try {
       const statuses = await invokeDesktop<AiAutomationRunStatus[]>("ai_automation_run_statuses", { ids: uniqueIds });
       if (!statuses?.length) return;
@@ -5378,7 +5378,7 @@ function AiAutomationPanelComponent({
   }, []);
 
   const refresh = useCallback(async (preferredProfileId?: string | null) => {
-    if (!isTauriRuntime()) {
+    if (!hasBackend()) {
       setSummary(null);
       setLoading(false);
       setError(t("automation:workbenchDesktopOnly"));
@@ -5483,7 +5483,7 @@ function AiAutomationPanelComponent({
     [summary?.runs]
   );
   useEffect(() => {
-    if (activeTab !== "runs" || activeRunIds.length === 0 || !isTauriRuntime()) return;
+    if (activeTab !== "runs" || activeRunIds.length === 0 || !hasBackend()) return;
     const intervalId = window.setInterval(() => void refreshRunStatuses(activeRunIds), 10_000);
     return () => window.clearInterval(intervalId);
   }, [activeRunIds, activeTab, refreshRunStatuses]);
@@ -5510,7 +5510,7 @@ function AiAutomationPanelComponent({
     successMessage: string,
     preferredProfileId?: string | null
   ) => {
-    if (!isTauriRuntime()) {
+    if (!hasBackend()) {
       onNotify({ kind: "warning", title: t("common:desktopOnly"), message: t("automation:workbenchCommandDesktopOnly") });
       return false;
     }
@@ -5578,7 +5578,7 @@ function AiAutomationPanelComponent({
   const confirmTraderDisable = useCallback((profile: AiAgentProfile, proceed: () => void) => {
     const stored = (summary?.profiles ?? []).find((item) => item.id === profile.id);
     const disabling = profile.contextMode === "briefing" && !profile.enabled && stored?.enabled === true;
-    if (!disabling || !isTauriRuntime()) {
+    if (!disabling || !hasBackend()) {
       proceed();
       return;
     }
@@ -5679,7 +5679,7 @@ function AiAutomationPanelComponent({
       confirmTraderDisable(profile, () => persistProfile(profile, forced));
       return;
     }
-    if (forced || !isTauriRuntime()) {
+    if (forced || !hasBackend()) {
       persistProfile(profile, forced);
       return;
     }
@@ -5740,7 +5740,7 @@ function AiAutomationPanelComponent({
   /** C29.5：一键停机（可选平仓）。命令缺失时提示，不静默。 */
   const fastlaneKillSwitch = useCallback(async (closePositions: boolean): Promise<boolean> => {
     if (!profileDraft) return false;
-    if (!isTauriRuntime()) {
+    if (!hasBackend()) {
       onNotify({ kind: "warning", title: t("common:desktopOnly"), message: t("automation:workbenchCommandDesktopOnly") });
       return false;
     }
@@ -5760,7 +5760,7 @@ function AiAutomationPanelComponent({
   }, [onNotify, profileDraft, t]);
 
   const forceDeep = useCallback(async (runId: string): Promise<boolean> => {
-    if (!isTauriRuntime()) return false;
+    if (!hasBackend()) return false;
     try {
       await forceDeepRun(runId);
       automationSectionCache.delete("runs");

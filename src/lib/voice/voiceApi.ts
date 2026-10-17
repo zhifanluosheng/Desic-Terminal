@@ -1,5 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
-import { isTauriRuntime, listenOptional } from "../tauri";
+import { hasBackend, invokeDesktop, listenOptional } from "../tauri";
 import { int16ToBase64 } from "./wav";
 
 export type VoiceSource = "none" | "active-model" | "custom" | "local";
@@ -51,18 +50,20 @@ function messageOf(error: unknown): string {
 }
 
 export async function loadVoiceConfig(): Promise<VoiceConfigSummary | null> {
-  if (!isTauriRuntime()) return null;
+  if (!hasBackend()) return null;
   try {
-    return await invoke<VoiceConfigSummary>("voice_config_summary");
+    return await invokeDesktop<VoiceConfigSummary>("voice_config_summary");
   } catch (error) {
     throw new Error(messageOf(error));
   }
 }
 
 export async function saveVoiceConfig(update: VoiceConfigUpdate): Promise<VoiceConfigSummary> {
-  if (!isTauriRuntime()) throw new Error("语音设置仅在桌面应用中可用");
+  if (!hasBackend()) throw new Error("语音设置仅在桌面应用中可用");
   try {
-    return await invoke<VoiceConfigSummary>("voice_save_config", { update });
+    const saved = await invokeDesktop<VoiceConfigSummary>("voice_save_config", { update });
+    if (!saved) throw new Error("语音设置仅在桌面应用中可用");
+    return saved;
   } catch (error) {
     throw new Error(messageOf(error));
   }
@@ -81,32 +82,36 @@ function blobToBase64(blob: Blob): Promise<string> {
 }
 
 export async function loadVoiceLocalStatus(): Promise<VoiceLocalStatus | null> {
-  if (!isTauriRuntime()) return null;
+  if (!hasBackend()) return null;
   try {
-    return await invoke<VoiceLocalStatus>("voice_local_status");
+    return await invokeDesktop<VoiceLocalStatus>("voice_local_status");
   } catch (error) {
     throw new Error(messageOf(error));
   }
 }
 
 export async function installVoiceLocal(): Promise<VoiceLocalStatus> {
-  if (!isTauriRuntime()) throw new Error("本机识别仅在桌面应用中可用");
+  if (!hasBackend()) throw new Error("本机识别仅在桌面应用中可用");
   try {
-    return await invoke<VoiceLocalStatus>("voice_local_install");
+    const status = await invokeDesktop<VoiceLocalStatus>("voice_local_install");
+    if (!status) throw new Error("本机识别仅在桌面应用中可用");
+    return status;
   } catch (error) {
     throw new Error(messageOf(error));
   }
 }
 
 export async function cancelVoiceLocalInstall(): Promise<void> {
-  if (!isTauriRuntime()) return;
-  await invoke("voice_local_cancel").catch(() => undefined);
+  if (!hasBackend()) return;
+  await invokeDesktop("voice_local_cancel").catch(() => undefined);
 }
 
 export async function removeVoiceLocal(): Promise<VoiceLocalStatus> {
-  if (!isTauriRuntime()) throw new Error("本机识别仅在桌面应用中可用");
+  if (!hasBackend()) throw new Error("本机识别仅在桌面应用中可用");
   try {
-    return await invoke<VoiceLocalStatus>("voice_local_remove");
+    const status = await invokeDesktop<VoiceLocalStatus>("voice_local_remove");
+    if (!status) throw new Error("本机识别仅在桌面应用中可用");
+    return status;
   } catch (error) {
     throw new Error(messageOf(error));
   }
@@ -117,7 +122,7 @@ export function listenVoiceLocalProgress(handler: (progress: VoiceLocalProgress)
 }
 
 export async function transcribeVoice(input: { blob: Blob; mime: string; wav?: Blob | null; hints?: readonly string[]; language?: string }): Promise<{ text: string; host: string | null }> {
-  if (!isTauriRuntime()) throw new Error("语音转写仅在桌面应用中可用");
+  if (!hasBackend()) throw new Error("语音转写仅在桌面应用中可用");
   // 选了本机识别就发 16kHz WAV，录音不出本机；否则发原始录音交给云端服务。
   const config = await loadVoiceConfig();
   const useLocal = config?.source === "local";
@@ -125,9 +130,11 @@ export async function transcribeVoice(input: { blob: Blob; mime: string; wav?: B
   const audio = useLocal && input.wav ? { blob: input.wav, mime: "audio/wav" } : { blob: input.blob, mime: input.mime };
   const audioBase64 = await blobToBase64(audio.blob);
   try {
-    return await invoke<{ text: string; host: string | null }>("voice_transcribe", {
+    const result = await invokeDesktop<{ text: string; host: string | null }>("voice_transcribe", {
       request: { audioBase64, mime: audio.mime, hints: input.hints ?? [], language: input.language },
     });
+    if (!result) throw new Error("语音转写仅在桌面应用中可用");
+    return result;
   } catch (error) {
     throw new Error(messageOf(error));
   }
@@ -163,7 +170,7 @@ export function createVoiceStream(onPartial: (text: string) => void): VoiceStrea
     if (closed) dispose?.();
     else unlisten = dispose;
   });
-  let queue: Promise<void> = invoke("voice_stream_start").then(
+  let queue: Promise<void> = invokeDesktop("voice_stream_start").then(
     () => undefined,
     (error) => {
       failure = new Error(messageOf(error));
@@ -174,7 +181,7 @@ export function createVoiceStream(onPartial: (text: string) => void): VoiceStrea
       queue = queue.then(async () => {
         if (failure || closed) return;
         try {
-          await invoke("voice_stream_push", { request: { pcmBase64: int16ToBase64(chunk) } });
+          await invokeDesktop("voice_stream_push", { request: { pcmBase64: int16ToBase64(chunk) } });
         } catch (error) {
           failure = new Error(messageOf(error));
         }
@@ -184,16 +191,18 @@ export function createVoiceStream(onPartial: (text: string) => void): VoiceStrea
       await queue;
       try {
         if (failure) throw failure;
-        return await invoke<string>("voice_stream_finish").catch((error) => {
+        const text = await invokeDesktop<string>("voice_stream_finish").catch((error) => {
           throw new Error(messageOf(error));
         });
+        if (!text) throw new Error("本机识别仅在桌面应用中可用");
+        return text;
       } finally {
         release();
       }
     },
     cancel() {
       release();
-      queue = queue.then(() => invoke("voice_stream_cancel").then(() => undefined, () => undefined));
+      queue = queue.then(() => invokeDesktop("voice_stream_cancel").then(() => undefined, () => undefined));
     },
   };
 }

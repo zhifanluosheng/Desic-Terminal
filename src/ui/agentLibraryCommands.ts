@@ -1,5 +1,5 @@
 import type { AiAgentDetail, AiAgentEnvelope, AiAgentSource, AiAgentSummary } from "../types";
-import { invokeDesktop, isTauriRuntime } from "../lib/tauri";
+import { hasBackend, invokeDesktop } from "../lib/tauri";
 import { logger } from "../lib/logger";
 import { extractAgentResponsibility } from "./agent-library/agentDocument";
 
@@ -83,7 +83,7 @@ export function normalizeAgentDetail(value: unknown): AiAgentDetail | null {
 }
 
 function requireDesktop(): void {
-  if (!isTauriRuntime()) throw new Error("AGENT_LIBRARY_DESKTOP_ONLY");
+  if (!hasBackend()) throw new Error("AGENT_LIBRARY_DESKTOP_ONLY");
 }
 
 /** `ai_agents_list` → 内置 + 自定义；Rust 已按 source、name 排序。 */
@@ -149,7 +149,7 @@ export async function generateAiAgentDraft(input: AgentDraftRequest): Promise<Ai
 
 /** P3：取消进行中的草稿生成（幂等：请求已完成时命令报错也按已结束处理）。 */
 export async function cancelAiAgentDraft(requestId: string): Promise<void> {
-  if (!isTauriRuntime()) return;
+  if (!hasBackend()) return;
   try {
     await invokeDesktop<unknown>("ai_agent_generate_cancel", { requestId });
   } catch (error) {
@@ -166,7 +166,7 @@ export async function cancelAiAgentDraft(requestId: string): Promise<void> {
 const responsibilityCache = new Map<string, string>();
 
 export async function loadAgentResponsibilityIndex(agents: AiAgentSummary[], force = false): Promise<Record<string, string>> {
-  if (!isTauriRuntime()) return {};
+  if (!hasBackend()) return {};
   const pending = agents.filter((agent) => force || !responsibilityCache.has(`${agent.id}:${agent.updatedAt}`));
   await Promise.all(pending.map(async (agent) => {
     try {

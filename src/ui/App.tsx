@@ -259,7 +259,7 @@ import {
 } from "../lib/marketHotStore";
 import { loadNotificationSettings, saveFeishuConfig, testFeishuNotification } from "../lib/notifications";
 import { classifyAlgoPendingOrderGroup, classifyAlgoTriggerPurpose, classifyOrdinaryPendingOrderGroup, isOrdinaryPendingOrder, mergePendingAlgoOrders } from "../lib/pendingOrderClassification";
-import { bridgeEventStats, DATA_ROOT_MIGRATION_EVENT, cancelDataRootMigration, cancelRunningDataRootMigration, cleanupOldDataRoot, dataRootBootstrapState, dataRootMigrationStatus, dataRootOverview, finalizeDataRootBootstrap, getActiveTauriListenerCounts, hasBackendAsync, invokeDesktop, invokeOptional, isTauriRuntime, listenOptional, pickDataRootDirectory, requestDataRootMigration, restartApp, runDataRootMigration, type DataRootMigrationPhase, type DataRootMigrationProgress, type DataRootOverview } from "../lib/tauri";
+import { bridgeEventStats, hasBackend, DATA_ROOT_MIGRATION_EVENT, cancelDataRootMigration, cancelRunningDataRootMigration, cleanupOldDataRoot, dataRootBootstrapState, dataRootMigrationStatus, dataRootOverview, finalizeDataRootBootstrap, getActiveTauriListenerCounts, hasBackendAsync, invokeDesktop, invokeOptional, isTauriRuntime, listenOptional, pickDataRootDirectory, requestDataRootMigration, restartApp, runDataRootMigration, type DataRootMigrationPhase, type DataRootMigrationProgress, type DataRootOverview } from "../lib/tauri";
 import { marketEventStats } from "../lib/marketEventBus";
 import { useTranslation } from "react-i18next";
 
@@ -2312,7 +2312,7 @@ function TradingTerminal({
   );
   const equityTickerKey = equityTickers.join(",");
   useEffect(() => {
-    if (!isTauriRuntime()) return;
+    if (!hasBackend()) return;
     const interval = window.setInterval(
       () => setEquityMetadataRefreshNonce((value) => value + 1),
       EQUITY_METADATA_REFRESH_MS
@@ -2320,7 +2320,7 @@ function TradingTerminal({
     return () => window.clearInterval(interval);
   }, []);
   useEffect(() => {
-    if (!isTauriRuntime() || !equityTickerKey) {
+    if (!hasBackend() || !equityTickerKey) {
       setEquityDirectory(null);
       setEquityLocalizations(null);
       return;
@@ -2665,7 +2665,7 @@ function TradingTerminal({
   }, [pushNotification, t, uiText]);
 
   useEffect(() => {
-    if (!isTauriRuntime()) return;
+    if (!hasBackend()) return;
     void loadNewsReadState().then((state) => setNewsUnreadCount(state.unreadEvents)).catch(() => undefined);
   }, []);
 
@@ -3454,7 +3454,19 @@ function TradingTerminal({
   const pendingLiveAccount = pendingLiveAccountScope
     ? accounts.find((item) => accountEnvironmentScopeKey(item) === accountEnvironmentScopeKey(pendingLiveAccountScope))
     : undefined;
+  // 嵌入模式（DSH 面板 iframe）没有原生窗口能力：弹出图表改为页内覆盖层呈现。
+  const [embeddedChartOverlay, setEmbeddedChartOverlay] = useState<{ id: string; symbol: string; timeframe: string } | null>(null);
   const openDetachedChart = useCallback(() => {
+    if (!isTauriRuntime()) {
+      if (hasBackend()) {
+        setEmbeddedChartOverlay({
+          id: `embed-${Date.now()}`,
+          symbol,
+          timeframe: bar
+        });
+      }
+      return;
+    }
     void openChartWindow({
       symbol,
       timeframe: bar,
@@ -4767,7 +4779,7 @@ function TradingTerminal({
 
   // 雷达小时快照在应用级记录，不依赖雷达页是否打开。
   const radarRankChanges = useRadarSnapshotRecorder({
-    enabled: isTauriRuntime(),
+    enabled: hasBackend(),
     marketAssets: enrichedMarketAssets,
     tickers: marketTickers,
     fetchedAt: marketTickersFetchedAt,
@@ -5217,7 +5229,7 @@ function TradingTerminal({
                 error={marketTickersError}
                 watchlist={watchlist}
                 cacheDir={marketAssetCacheDir}
-                desktop={isTauriRuntime()}
+                desktop={hasBackend()}
                 rankChanges={radarRankChanges}
                 onNotify={pushNotification}
                 onRefresh={() => void refreshMarketTickerSnapshot()}
@@ -6029,6 +6041,16 @@ function TradingTerminal({
             void refreshPrivateSnapshot();
           }}
         />
+      )}
+      {embeddedChartOverlay && (
+        <div className="embedded-chart-overlay" role="dialog" aria-modal="true">
+          <ChartWindowPage
+            initialWindowLabel={`chart-${embeddedChartOverlay.id}`}
+            seedSymbol={embeddedChartOverlay.symbol}
+            seedTimeframe={embeddedChartOverlay.timeframe}
+            onClose={() => setEmbeddedChartOverlay(null)}
+          />
+        </div>
       )}
     </main>
   );
@@ -9296,7 +9318,7 @@ function AccountSettingsPane({
         if (saved) onSelect(saved.id);
         setDraft(createAccountDraft(saved));
         accountWasSaved = Boolean(saved);
-        if (saved && isTauriRuntime()) {
+        if (saved && hasBackend()) {
           // Account creation immediately verifies and, when possible, switches OKX to hedge mode.
           await testAccountConfig(saved.id);
         }
@@ -11995,7 +12017,7 @@ function OrderTicket({
   const tradeExecutionGuardBlocksOpen = tradeExecutionGuardStatus !== "ready" || tradeExecutionGuards.length > 0;
   const refreshTradeExecutionGuards = useCallback(async (showLoading = false) => {
     const requestSeq = ++tradeExecutionGuardSeqRef.current;
-    if (!account || !isTauriRuntime()) {
+    if (!account || !hasBackend()) {
       setTradeExecutionGuards([]);
       setTradeExecutionGuardStatus("ready");
       return;
@@ -12198,6 +12220,21 @@ function OrderTicket({
       })
       .catch((error) => {
         if (cancelled || requestSeq !== leverageRequestSeqRef.current) return;
+        const raw = error instanceof Error ? error.message : String(error);
+        let okxCode = "";
+        try {
+          const parsed = JSON.parse(raw) as { code?: string | number };
+          okxCode = parsed?.code != null ? String(parsed.code) : "";
+        } catch {
+          okxCode = "";
+        }
+        // 51001 = 合约不存在（常见于模拟盘未上架的品种）：降级为提示，不当成异常刷屏。
+        if (okxCode === "51001" || /instrument id.*(doesn't|does not) exist/i.test(raw)) {
+          logger.warn("leverage info unavailable for instrument", { symbol, code: okxCode });
+          setLeverageInfo([]);
+          setLeverageStatus(t("trading:instrumentUnavailable"));
+          return;
+        }
         logger.error("fetch leverage info failed", error);
         setLeverageInfo([]);
         setLeverageStatus(t("trading:leverageReadFailed"));
@@ -12669,7 +12706,7 @@ function OrderTicket({
 
   useEffect(() => {
     const restoreSeq = ++instrumentOperationRestoreSeqRef.current;
-    if (!account || !isTauriRuntime()) {
+    if (!account || !hasBackend()) {
       setInstrumentOperationRestoreStatus("ready");
       return;
     }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { listenSystematicEvents, loadSystematicOverview, type SystematicOverview } from "../lib/systematic";
 import { logger } from "../lib/logger";
-import { isTauriRuntime } from "../lib/tauri";
+import { hasBackend } from "../lib/tauri";
 import type { MarketAssetsSummary } from "../types";
 import { SystematicStrategyLab } from "./SystematicStrategyLab";
 import { WorkspaceFrame } from "./WorkspaceFrame";
@@ -56,7 +56,7 @@ export function SystematicResearchPage({ selectedSymbol, watchlist, marketAssets
   const [overview, setOverview] = useState<SystematicOverview | null>(null);
   const refreshTimer = useRef<number | null>(null);
   const nextRefreshAt = useRef(0);
-  const desktop = isTauriRuntime();
+  const desktop = hasBackend();
   const chinese = isChineseLocale(i18n.resolvedLanguage ?? i18n.language);
 
   const refresh = useCallback(async () => {
