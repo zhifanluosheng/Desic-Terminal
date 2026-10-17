@@ -143,7 +143,8 @@ fn download_error(error: &reqwest::Error) -> String {
 /// Windows 上重命名目录/文件时，只要内部文件被打开（杀软实时扫描刚解压的大文件很常见），
 /// 就会返回“拒绝访问 (os error 5)”。这里带退避重试，避免安装因瞬时占用失败。
 fn rename_with_retry(from: &Path, to: &Path) -> std::io::Result<()> {
-    const DELAYS_MS: [u64; 10] = [80, 150, 250, 400, 600, 900, 1200, 1600, 2200, 3000];
+    // 152MB 引擎/模型刚解压完时，Defender 实时扫描可能持续十几秒；总窗口 ~53s。
+    const DELAYS_MS: [u64; 13] = [100, 200, 300, 500, 800, 1200, 1800, 2500, 3500, 5000, 8000, 12000, 18000];
     let mut last: Option<std::io::Error> = None;
     for (index, delay) in DELAYS_MS.iter().enumerate() {
         match fs::rename(from, to) {

@@ -723,11 +723,12 @@ function LegacySingleChartWindowPage({ initialWindowLabel }: { initialWindowLabe
   );
 }
 
-export function ChartWindowPage({ initialWindowLabel, seedSymbol, seedTimeframe, onClose }: {
+export function ChartWindowPage({ initialWindowLabel, seedSymbol, seedTimeframe, onClose, onPromote }: {
   initialWindowLabel?: string | null;
   seedSymbol?: string;
   seedTimeframe?: string;
   onClose?: () => void;
+  onPromote?: () => void;
 }) {
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -736,5 +737,5 @@ export function ChartWindowPage({ initialWindowLabel, seedSymbol, seedTimeframe,
     }).then((cleanup) => { unlisten = cleanup; });
     return () => unlisten?.();
   }, []);
-  return <ChartWindowWorkspacePage initialWindowLabel={initialWindowLabel} seedSymbol={seedSymbol} seedTimeframe={seedTimeframe} onClose={onClose} />;
+  return <ChartWindowWorkspacePage initialWindowLabel={initialWindowLabel} seedSymbol={seedSymbol} seedTimeframe={seedTimeframe} onClose={onClose} onPromote={onPromote} />;
 }

@@ -65,11 +65,12 @@ function activePane(document: ChartWorkspaceDocument): ChartWorkspacePane {
   return document.panes.find((pane) => pane.id === document.activePaneId) ?? document.panes[0];
 }
 
-export function ChartWindowWorkspacePage({ initialWindowLabel, seedSymbol, seedTimeframe, onClose }: {
+export function ChartWindowWorkspacePage({ initialWindowLabel, seedSymbol, seedTimeframe, onClose, onPromote }: {
   initialWindowLabel?: string | null;
   seedSymbol?: string;
   seedTimeframe?: string;
   onClose?: () => void;
+  onPromote?: () => void;
 }) {
   const windowId = useMemo(() => getWindowId(initialWindowLabel), [initialWindowLabel]);
   const storageId = useMemo(() => workspaceStorageId(windowId), [windowId]);
@@ -194,9 +195,14 @@ export function ChartWindowWorkspacePage({ initialWindowLabel, seedSymbol, seedT
     void import("@tauri-apps/api/window").then(({ getCurrentWindow }) => void getCurrentWindow().minimize());
   }, []);
   const toggleMaximize = useCallback(() => {
+    // 页内覆盖层：点“最大化/还原”= 提升为 DSH 之外的原生窗口。
+    if (onPromote) {
+      onPromote();
+      return;
+    }
     if (!isTauriRuntime()) return;
     void import("@tauri-apps/api/window").then(({ getCurrentWindow }) => void getCurrentWindow().toggleMaximize());
-  }, []);
+  }, [onPromote]);
   const close = useCallback(() => {
     if (onClose) {
       onClose();
@@ -258,8 +264,8 @@ export function ChartWindowWorkspacePage({ initialWindowLabel, seedSymbol, seedT
           </div>
         </div>
         <div className="chart-window-controls">
-          <button onClick={minimize} title="最小化"><Minus size={16} /></button>
-          <button onClick={toggleMaximize} title="最大化/还原"><Maximize2 size={15} /></button>
+          {!onPromote && <button onClick={minimize} title="最小化"><Minus size={16} /></button>}
+          <button onClick={toggleMaximize} title={onPromote ? "弹出到独立窗口" : "最大化/还原"}><Maximize2 size={15} /></button>
           <button className="danger" onClick={close} title="关闭"><X size={16} /></button>
         </div>
       </header>

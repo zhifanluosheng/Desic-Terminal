@@ -3457,7 +3457,8 @@ function TradingTerminal({
   // 嵌入模式（DSH 面板 iframe）优先弹出原生窗口（DSH 界面之外）；原生窗口创建失败时退回页内覆盖层。
   const [embeddedChartOverlay, setEmbeddedChartOverlay] = useState<{ id: string; symbol: string; timeframe: string } | null>(null);
   const openDetachedChart = useCallback(() => {
-    const fallbackToOverlay = () => {
+    // 嵌入模式：首次点击先在页内覆盖层打开；覆盖层里的“最大化/还原”再提升为 DSH 之外的原生窗口。
+    if (!isTauriRuntime()) {
       if (hasBackend()) {
         setEmbeddedChartOverlay({
           id: `embed-${Date.now()}`,
@@ -3465,32 +3466,21 @@ function TradingTerminal({
           timeframe: bar
         });
       }
-    };
+      return;
+    }
     void openChartWindow({
-      // 嵌入模式：同一标的/周期复用同一个原生窗口，重复点击只聚焦、不再叠开新窗口。
-      id: isTauriRuntime() ? null : `embed-${symbol}-${bar}`,
       symbol,
       timeframe: bar,
       accountId: account?.id ?? null,
       environment: effectiveTradeEnvironment
-    })
-      .then((opened) => {
-        if (!opened && !isTauriRuntime()) fallbackToOverlay();
-      })
-      .catch((error) => {
-        // 嵌入模式没有原生窗口时（无图形会话等）降级为页内覆盖层，不弹错误通知。
-        if (!isTauriRuntime()) {
-          fallbackToOverlay();
-          if (!hasBackend()) logger.warn("detached chart window unavailable in embedded mode", error);
-          return;
-        }
-        logger.error("failed to open detached chart window", error, { symbol, bar });
-        pushNotification({
-          kind: "error",
-          title: uiText("弹出图表失败", "Could not open detached chart"),
-          message: error instanceof Error ? error.message : String(error)
-        });
+    }).catch((error) => {
+      logger.error("failed to open detached chart window", error, { symbol, bar });
+      pushNotification({
+        kind: "error",
+        title: uiText("弹出图表失败", "Could not open detached chart"),
+        message: error instanceof Error ? error.message : String(error)
       });
+    });
   }, [account?.id, bar, effectiveTradeEnvironment, pushNotification, symbol]);
   useEffect(() => {
     if (!account) {
@@ -6060,6 +6050,26 @@ function TradingTerminal({
             seedSymbol={embeddedChartOverlay.symbol}
             seedTimeframe={embeddedChartOverlay.timeframe}
             onClose={() => setEmbeddedChartOverlay(null)}
+            onPromote={() => {
+              const target = embeddedChartOverlay;
+              if (!target) return;
+              // 提升为原生窗口：同一标的/周期复用一个窗口，避免重复叠开。
+              setEmbeddedChartOverlay(null);
+              void openChartWindow({
+                id: `embed-${target.symbol}-${target.timeframe}`,
+                symbol: target.symbol,
+                timeframe: target.timeframe,
+                accountId: account?.id ?? null,
+                environment: effectiveTradeEnvironment
+              })
+                .then((opened) => {
+                  if (!opened) setEmbeddedChartOverlay(target);
+                })
+                .catch((error) => {
+                  logger.warn("promote chart overlay to native window failed", error);
+                  setEmbeddedChartOverlay(target);
+                });
+            }}
           />
         </div>
       )}
