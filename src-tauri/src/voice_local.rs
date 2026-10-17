@@ -121,7 +121,7 @@ pub(crate) async fn download_verified(
         if hex(&hasher.finalize()) != asset.sha256 {
             return Err("校验失败：下载内容与官方发布的哈希不一致，已丢弃".to_string());
         }
-        fs::rename(&part, dest).map_err(|error| format!("保存下载文件失败：{error}"))
+        rename_with_retry(&part, dest).map_err(|error| format!("保存下载文件失败：{error}"))
     }
     .await;
     if result.is_err() {
@@ -137,6 +137,38 @@ fn download_error(error: &reqwest::Error) -> String {
         "无法连接下载服务器（github.com），请检查网络或代理".to_string()
     } else {
         "下载中断，请重试".to_string()
+    }
+}
+
+/// Windows 上重命名目录/文件时，只要内部文件被打开（杀软实时扫描刚解压的大文件很常见），
+/// 就会返回“拒绝访问 (os error 5)”。这里带退避重试，避免安装因瞬时占用失败。
+fn rename_with_retry(from: &Path, to: &Path) -> std::io::Result<()> {
+    const DELAYS_MS: [u64; 10] = [80, 150, 250, 400, 600, 900, 1200, 1600, 2200, 3000];
+    let mut last: Option<std::io::Error> = None;
+    for (index, delay) in DELAYS_MS.iter().enumerate() {
+        match fs::rename(from, to) {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                last = Some(error);
+                if index + 1 < DELAYS_MS.len() {
+                    std::thread::sleep(Duration::from_millis(*delay));
+                }
+            }
+        }
+    }
+    Err(last.unwrap_or_else(|| std::io::Error::other("rename failed")))
+}
+
+/// 尽力删除目录（被占用时退避重试），失败不抛错，由后续重命名决定结果。
+fn remove_dir_best_effort(path: &Path) {
+    if !path.exists() {
+        return;
+    }
+    for attempt in 0..6u32 {
+        if fs::remove_dir_all(path).is_ok() || !path.exists() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(120 * u64::from(attempt + 1)));
     }
 }
 
@@ -229,17 +261,29 @@ pub(crate) async fn install_at(
         fs::write(staging.join(MARKER_FILE), INSTALL_ID).map_err(|error| format!("无法写入安装标记：{error}"))?;
 
         // 换入正式目录，再用静音做一次真实识别自检；加载不起来就回滚。
+        // Windows 上目录内文件被实时扫描/索引时会短暂“拒绝访问”，重命名与删除都带退避重试。
         let current = current_dir(root);
         let previous = root.join("previous");
-        let _ = fs::remove_dir_all(&previous);
-        if current.exists() {
-            fs::rename(&current, &previous).map_err(|error| format!("无法替换旧版本：{error}"))?;
-        }
-        if let Err(error) = fs::rename(&staging, &current) {
-            if previous.exists() {
-                let _ = fs::rename(&previous, &current);
-            }
-            return Err(format!("无法启用新版本：{error}"));
+        {
+            let staging = staging.clone();
+            let current = current.clone();
+            let previous = previous.clone();
+            crate::blocking_work::run_blocking(move || -> Result<(), String> {
+                remove_dir_best_effort(&previous);
+                if current.exists() {
+                    rename_with_retry(&current, &previous).map_err(|error| format!("无法替换旧版本：{error}"))?;
+                }
+                match rename_with_retry(&staging, &current) {
+                    Ok(()) => Ok(()),
+                    Err(error) => {
+                        if previous.exists() {
+                            let _ = rename_with_retry(&previous, &current);
+                        }
+                        Err(format!("无法启用新版本：{error}"))
+                    }
+                }
+            })
+            .await?;
         }
         report("verifying", total, total);
         // 自检：加载识别库与模型，对静音做一次真实识别；任何一步失败都回滚。
@@ -251,10 +295,17 @@ pub(crate) async fn install_at(
                 Ok(())
             }
             Err(error) => {
-                let _ = fs::remove_dir_all(&current);
-                if previous.exists() {
-                    let _ = fs::rename(&previous, &current);
-                }
+                let current = current.clone();
+                let previous = previous.clone();
+                crate::blocking_work::run_blocking(move || -> Result<(), String> {
+                    remove_dir_best_effort(&current);
+                    if previous.exists() {
+                        let _ = rename_with_retry(&previous, &current);
+                    }
+                    Ok(())
+                })
+                .await
+                .ok();
                 Err(format!("引擎安装后自检未通过：{error}"))
             }
         }
@@ -564,6 +615,30 @@ mod tests {
         let dir = temp_dir("recognize");
         let error = crate::voice_stream::recognize_once(&dir, &silence_samples(100)).unwrap_err();
         assert!(!error.is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Windows 上目录内文件被占用（杀软实时扫描）时目录重命名会报 os error 5；
+    /// 换目录必须能等到占用释放后成功。
+    #[test]
+    #[cfg(windows)]
+    fn rename_with_retry_waits_for_a_locked_file() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = temp_dir("rename-retry");
+        let from = dir.join("staging");
+        let to = dir.join("current");
+        fs::create_dir_all(&from).unwrap();
+        let locked = from.join("engine.dll");
+        fs::write(&locked, b"x").unwrap();
+        let handle = fs::OpenOptions::new().read(true).share_mode(0).open(&locked).unwrap();
+        let releaser = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(400));
+            drop(handle);
+        });
+        let result = rename_with_retry(&from, &to);
+        releaser.join().unwrap();
+        assert!(result.is_ok(), "rename should succeed after the lock is released: {result:?}");
+        assert!(to.join("engine.dll").is_file());
         let _ = fs::remove_dir_all(&dir);
     }
 }

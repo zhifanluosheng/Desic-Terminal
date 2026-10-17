@@ -3467,6 +3467,8 @@ function TradingTerminal({
       }
     };
     void openChartWindow({
+      // 嵌入模式：同一标的/周期复用同一个原生窗口，重复点击只聚焦、不再叠开新窗口。
+      id: isTauriRuntime() ? null : `embed-${symbol}-${bar}`,
       symbol,
       timeframe: bar,
       accountId: account?.id ?? null,
@@ -5198,7 +5200,7 @@ function TradingTerminal({
               <CircleHelp size={17} />
               {firstLaunchOnboarding.canReopen && <span aria-hidden="true" />}
             </button>
-            <div className="window-controls" aria-label={uiText("窗口控制", "Window controls")}>
+            {isTauriRuntime() && (<div className="window-controls" aria-label={uiText("窗口控制", "Window controls")}>
               <button className="window-button" title={t("chart:minimizeWindow")} onClick={() => void handleWindowAction("minimize")}>
                 <Minus size={16} strokeWidth={1.8} />
               </button>
@@ -5208,7 +5210,7 @@ function TradingTerminal({
               <button className="window-button close" title={t("common:close")} onClick={() => void handleWindowAction("close")}>
                 <X size={16} />
               </button>
-            </div>
+            </div>)}
           </div>
         </header>
 
