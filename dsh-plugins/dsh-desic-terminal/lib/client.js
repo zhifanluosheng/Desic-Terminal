@@ -178,8 +178,8 @@ window.__ModuleLoader__.load({
       }, 'desic-terminal: panel styles')
 
       ctx.effect(() => ctx.desktopWorkbenches.register({
-        title: 'Desic Terminal',
-        panelTitle: 'Desic Terminal',
+        title: 'Nuomi Terminal',
+        panelTitle: 'Nuomi Terminal',
         repository: 'https://github.com/xiazhi88/Desic-Terminal',
         description: '加密永续合约交易终端：K 线、订单流、账户与 AI 自动化，整页嵌入 DSH；前端经本机 127.0.0.1:17899 HTTP 桥与 Rust 后端通信。',
         customFrame: true,
