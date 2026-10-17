@@ -2372,10 +2372,10 @@ pub async fn dispatch_command(
         }
         "start_market_stream" => {
             let inst_id: String = body.get("instId").cloned().ok_or_else(|| format!("missing required key instId")).and_then(|v| serde_json::from_value(v).map_err(|e| e.to_string()))?;
-            let _bar: String = body.get("Bar").cloned().ok_or_else(|| format!("missing required key Bar")).and_then(|v| serde_json::from_value(v).map_err(|e| e.to_string()))?;
+            let bar: String = body.get("bar").cloned().ok_or_else(|| format!("missing required key bar")).and_then(|v| serde_json::from_value(v).map_err(|e| e.to_string()))?;
             let watchlist: Option<Vec<String>> = body.get("watchlist").map(|v| serde_json::from_value(v.clone())).transpose().map_err(|e| e.to_string())?.unwrap_or(None);
             let session_id: Option<String> = body.get("sessionId").map(|v| serde_json::from_value(v.clone())).transpose().map_err(|e| e.to_string())?.unwrap_or(None);
-            let _res = crate::market_ws::start_market_stream(app.clone(), app.state::<MarketRuntime>(), inst_id, _bar, watchlist, session_id);
+            let _res = crate::market_ws::start_market_stream(app.clone(), app.state::<MarketRuntime>(), inst_id, bar, watchlist, session_id);
             match _res {
                 Ok(v) => serde_json::to_value(&v).map_err(|e| e.to_string()),
                 Err(e) => Err(e.to_string()),

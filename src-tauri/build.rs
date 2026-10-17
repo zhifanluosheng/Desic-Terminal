@@ -318,6 +318,8 @@ fn state_inner(ty: &str) -> String {
 
 /// camelCase 转换：snake_case -> camelCase（tauri invoke 的 key 约定）。
 fn to_camel(s: &str) -> String {
+    // 前导下划线是“未使用参数”的 Rust 惯例，不参与 key 命名（serde/tauri 同约定）。
+    let s = s.trim_start_matches('_');
     let mut out = String::new();
     let mut upper = false;
     for c in s.chars() {

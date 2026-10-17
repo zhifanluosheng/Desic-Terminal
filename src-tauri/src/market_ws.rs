@@ -268,10 +268,12 @@ pub fn start_market_stream(
     app: tauri::AppHandle,
     runtime: tauri::State<'_, MarketRuntime>,
     inst_id: String,
-    _bar: String,
+    bar: String,
     watchlist: Option<Vec<String>>,
     session_id: Option<String>,
 ) -> Result<(), String> {
+    // `bar` 不参与流注册（行情通道不区分周期）；保留真实参数名让桥 dispatch 生成 key `bar`。
+    let _ = &bar;
     let consumer_id = normalize_market_consumer_id(session_id.as_deref(), "main-market")?;
     let public_watchlist = normalize_watchlist(watchlist, &inst_id);
     // 主窗口只展示当前标的的盘口和成交；自选其余标的仍订阅并写入后端缓存，但不再推给前端。
