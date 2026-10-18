@@ -18,6 +18,7 @@ import {
   type UTCTimestamp
 } from "lightweight-charts";
 import { resolvedLocale } from "../i18n/runtime";
+import { subscribeVisualPreference } from "../lib/visualPreference";
 
 export type ChartTimestamp = number;
 
@@ -176,13 +177,14 @@ export type TradingChartHandle = {
   destroy: () => void;
 };
 
-/** 读主题变量决定图表底色与文字色（DSH 宿主用 --dsw-alias-*，缺省回退到原值）。 */
+/** 读主题变量决定图表底色与文字色（DSH 宿主用 --dsw-alias-*，独立运行时回退到本应用 --bg）。 */
 function resolveChartColors(): { background: string; textColor: string } {
   let background = "#000000";
   let textColor = "#9a9aa5";
   try {
     const style = getComputedStyle(document.documentElement);
-    const bg = style.getPropertyValue("--dsw-alias-bg-base").trim();
+    // 宿主（DSH）变量优先；独立运行时回退到本应用主题底色，避免图表永远是纯黑。
+    const bg = style.getPropertyValue("--dsw-alias-bg-base").trim() || style.getPropertyValue("--bg").trim();
     if (bg) background = bg;
     const fg = style.getPropertyValue("--dsw-alias-label-secondary").trim();
     if (fg) textColor = fg;
@@ -230,6 +232,18 @@ export function createTradingChart(container: HTMLElement, lineConfigs: ChartLin
       timeFormatter: (time: Time) => formatShanghaiChartTime(time, true)
     }
   });
+
+  // 图表底色由创建时的计算值决定，不会跟随 CSS 变量；切换外观（含宿主同色）时主动重设。
+  const applyChartTheme = () => {
+    const next = resolveChartColors();
+    chart.applyOptions({
+      layout: {
+        background: { type: ColorType.Solid, color: next.background },
+        textColor: next.textColor
+      }
+    });
+  };
+  const unsubscribeTheme = subscribeVisualPreference(applyChartTheme);
 
   const candleSeries = chart.addSeries(CandlestickSeries, {
     upColor: "#f6465d",
@@ -761,7 +775,7 @@ export function createTradingChart(container: HTMLElement, lineConfigs: ChartLin
     },
     attachCandlePrimitive: (primitive) => candleSeries.attachPrimitive(primitive),
     detachCandlePrimitive: (primitive) => candleSeries.detachPrimitive(primitive),
-    destroy: () => chart.remove()
+    destroy: () => { unsubscribeTheme(); chart.remove(); }
   };
 }
 
