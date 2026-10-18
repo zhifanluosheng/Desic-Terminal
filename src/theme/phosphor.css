@@ -687,41 +687,46 @@
  * 只改外壳与面板层级的中性灰，不动磷光的实时发光与价格逐位滚动。
  * ============================================================ */
 :root[data-visual="phosphor"][data-shell="host"] {
-  --bg: #1b1b1c;
-  --panel: #202023;
-  --panel-2: #262629;
-  --surface-raised: #222225;
-  --line: rgba(232, 232, 236, 0.13);
-  --line-soft: rgba(232, 232, 236, 0.07);
+  /* 宿主主题令牌（DSH 插件 postMessage 注入 --dsh-*），缺省回退到原来的深色。
+     --bg/--panel/--panel-2 是应用的基础色板，其余 host 规则都引用它们，
+     所以宿主换主题时整块外壳一起变。 */
+  --bg: var(--dsh-bg-base, #1b1b1c);
+  --panel: var(--dsh-bg-layer-1, #202023);
+  --panel-2: var(--dsh-bg-layer-2, #262629);
+  --surface-raised: var(--dsh-bg-layer-2, #222225);
+  --line: var(--dsh-border-l2, rgba(232, 232, 236, 0.13));
+  --line-soft: var(--dsh-border-l1, rgba(232, 232, 236, 0.07));
+  --host-ink: var(--dsh-label-primary, #e8e8ec);
+  --host-ink-weak: var(--dsh-label-secondary, #a0a0aa);
 }
 
 :root[data-visual="phosphor"][data-shell="host"],
 :root[data-visual="phosphor"][data-shell="host"] body {
-  background-color: #1b1b1c;
+  background-color: var(--bg);
 }
 
 :root[data-visual="phosphor"][data-shell="host"] .terminal {
-  background: #1b1b1c;
+  background: var(--bg);
 }
 /* 设置页 / 图表周边 / 表格视图等硬编码的纯黑面板，host 外壳下统一到宿主色。 */
 :root[data-visual="phosphor"][data-shell="host"] .settings-page-panel {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.026), rgba(255, 255, 255, 0.01)), #1b1b1c;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.026), rgba(255, 255, 255, 0.01)), var(--bg);
 }
 
 :root[data-visual="phosphor"][data-shell="host"] :is(.center-panel, .chart-data-table) {
-  background-color: #1b1b1c;
+  background-color: var(--bg);
 }
 
 :root[data-visual="phosphor"][data-shell="host"] :is(.account-button, .search-box, .chart-actions button, .rail-logo, .chart-data-table-header) {
-  background-color: #202023;
+  background-color: var(--panel);
 }
-/* 纯黑底同步：图表画布 / 图表工具条 / 应用根节点 / 启动页原本写死为 #000、#010203、#07090c、#030304。 */
+/* 纯黑底同步：图表画布 / 图表工具条 / 应用根节点 / 启动页原本写死为 #000、var(--bg)、#07090c、#030304。 */
 :root[data-visual="phosphor"][data-shell="host"] #root,
 :root[data-visual="phosphor"][data-shell="host"] .chart-wrap,
 :root[data-visual="phosphor"][data-shell="host"] .chart-toolbar,
 :root[data-visual="phosphor"][data-shell="host"] .startup-original,
 :root[data-visual="phosphor"][data-shell="host"] .startup-shell {
-  background: #1b1b1c;
+  background: var(--bg);
 }
 
 :root[data-visual="phosphor"][data-shell="host"] .chart-toolbar {
@@ -743,11 +748,11 @@
 }
 /* 悬浮提示类（价格条/连接状态/导航标签）原为深蓝黑 #10141d；host 外壳提升到面板色。 */
 :root[data-visual="phosphor"][data-shell="host"] :is(.price-strip-tooltip, .connection-tooltip, .rail-item__label) {
-  background-color: #202023;
+  background-color: var(--panel);
 }
 /* 右栏（市场深度 / 委托面板）与控制件：原 #06080c / #05070a / #07090c。 */
 :root[data-visual="phosphor"][data-shell="host"] :is(.market-depth, .trade-submit-zone, .bottom-tab-actions) {
-  background-color: #1b1b1c;
+  background-color: var(--bg);
 }
 
 :root[data-visual="phosphor"][data-shell="host"] .market-depth {
@@ -755,20 +760,20 @@
 }
 
 :root[data-visual="phosphor"][data-shell="host"] .ticket-tabs button:not(.active) {
-  background-color: #1b1b1c;
+  background-color: var(--bg);
 }
 
 :root[data-visual="phosphor"][data-shell="host"] :is(.ticket-form input:not([type="checkbox"]):not([type="range"]), .ticket-form .terminal-select-trigger) {
-  background-color: #202023;
+  background-color: var(--panel);
 }
 
 /* 情报页 / 帮助中心 / 图表提醒等同类深色条。 */
 :root[data-visual="phosphor"][data-shell="host"] :is(.intelligence-context-bar, .intelligence-trend-strip, .intelligence-calendar-band, .intelligence-calendar-view-switch, .intelligence-calendar-workbench, .help-center-toolbar, .help-category-nav, .chart-alert-webhook) {
-  background-color: #1b1b1c;
+  background-color: var(--bg);
 }
 /* 设置页：.settings-workspace 原 #050506；当前模块卡原蓝紫 tint；页头径向渐变改无。 */
 :root[data-visual="phosphor"][data-shell="host"] .settings-workspace {
-  background-color: #1b1b1c;
+  background-color: var(--bg);
 }
 
 :root[data-visual="phosphor"][data-shell="host"] .settings-page-current {
@@ -780,31 +785,31 @@
   background-image: none;
 }
 
-/* AI 研究页：外壳原 #0a0c10、主列 #0b0d11、输入区 #0b0d11、右侧研究面板 #0c0e13。
+/* AI 研究页：外壳原 #0a0c10、主列 var(--panel)、输入区 var(--panel)、右侧研究面板 #0c0e13。
    注意：原规则 `.ai-research-host > .ai-panel.ai-research-shell.sessions-open` 有 4 个类，
    这里必须用同等/更高特异性，否则被它压掉。 */
 :root[data-visual="phosphor"][data-shell="host"] .ai-research-host > .ai-panel.ai-research-shell {
-  --ai-research-bg: #1b1b1c;
-  --ai-research-surface: #202023;
-  --ai-research-surface-raised: #262629;
-  background-color: #1b1b1c;
+  --ai-research-bg: var(--bg);
+  --ai-research-surface: var(--panel);
+  --ai-research-surface-raised: var(--panel-2);
+  background-color: var(--bg);
 }
 
 :root[data-visual="phosphor"][data-shell="host"] :is(.ai-research-shell .ai-panel-main, .ai-research-shell .ai-session-sidebar) {
-  background-color: #1b1b1c;
+  background-color: var(--bg);
 }
 
 :root[data-visual="phosphor"][data-shell="host"] .ai-composer-stack {
-  background-color: #202023;
+  background-color: var(--panel);
 }
 
 :root[data-visual="phosphor"][data-shell="host"] :is(.ai-inspector-shortcuts, .ai-inspector-body, .ai-inspector-head, .ai-inspector-tabs) {
-  background-color: #1b1b1c;
+  background-color: var(--bg);
 }
 
 /* 委托面板控件：买一/卖一 #0b0e13、全仓/逐仓与张/成本 #05070a。 */
 :root[data-visual="phosphor"][data-shell="host"] :is(.bbo-price-actions button, .ticket-form .segmented) {
-  background-color: #202023;
+  background-color: var(--panel);
 }
 
 /* 图表浮层按钮：提醒/指标/图层/视图原 rgba(3,3,3,.72) 或 rgba(5,7,10,.9)。 */
@@ -822,31 +827,31 @@
 }
 
 :root[data-visual="phosphor"][data-shell="host"] .pressure-panel {
-  background-color: #1b1b1c;
+  background-color: var(--bg);
 }
-/* 宿主同色：AI 研究停靠容器默认 #07090d（近黑），切换页面时会闪一块黑； */
+/* 宿主同色：AI 研究停靠容器默认 var(--bg)（近黑），切换页面时会闪一块黑； */
 /* 改成宿主底色，视觉与其它工作区连续。 */
 :root[data-visual="phosphor"][data-shell="host"] .ai-dock.ai-research-host {
-  background: #1b1b1c;
+  background: var(--bg);
 }
 
-/* 输入区外层底座：默认 #202023，在 #1b1b1c 的对话区会显出一条更亮的横带；
-   宿主同色下让它融进对话区，只保留输入框本身（#262629）作为抬升面。 */
+/* 输入区外层底座：默认 var(--panel)，在 var(--bg) 的对话区会显出一条更亮的横带；
+   宿主同色下让它融进对话区，只保留输入框本身（var(--panel-2)）作为抬升面。 */
 :root[data-visual="phosphor"][data-shell="host"] .ai-research-shell .ai-composer-stack {
   background: transparent;
 }
 
-/* AI 输入框：原 rgba(14,16,21,.94) 比同级 .ai-composer-stack(#202023) 更黑，
+/* AI 输入框：原 rgba(14,16,21,.94) 比同级 .ai-composer-stack(var(--panel)) 更黑，
    看起来像“挖了个洞”；host 下改为略高于底座的输入面板。 */
 :root[data-visual="phosphor"][data-shell="host"] .ai-research-shell .ai-composer {
-  background-color: #262629;
+  background-color: var(--panel-2);
   border-color: rgba(232, 232, 236, 0.14);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22), inset 0 1px rgba(255, 255, 255, 0.03);
 }
 
-/* 会话栏拖拽把手：原 #0b0d11。 */
+/* 会话栏拖拽把手：原 var(--panel)。 */
 :root[data-visual="phosphor"][data-shell="host"] .ai-research-shell .ai-column-resize {
-  background-color: #1b1b1c;
+  background-color: var(--bg);
 }
 
 /* 图表右上控件条（指标/提醒/图层/网格/恢复/重置）：下移 10px，避开顶部导条。

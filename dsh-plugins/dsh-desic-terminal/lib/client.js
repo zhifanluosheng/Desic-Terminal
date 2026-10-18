@@ -22,6 +22,29 @@ window.__ModuleLoader__.load({
     const POLL_HIDDEN_MS = 15000
     const LAUNCH_STALL_MS = 120000
 
+    // 宿主主题令牌：iframe 是独立文档，CSS 变量不会继承进去，必须主动推送。
+    const THEME_TOKENS = [
+      '--dsw-alias-bg-base',
+      '--dsw-alias-bg-layer-1',
+      '--dsw-alias-bg-layer-2',
+      '--dsw-alias-bg-module-platform',
+      '--dsw-alias-label-primary',
+      '--dsw-alias-label-secondary',
+      '--dsw-alias-label-caption',
+      '--dsw-alias-border-l1',
+      '--dsw-alias-border-l2'
+    ]
+
+    function readThemeTokens() {
+      const style = getComputedStyle(document.documentElement)
+      const tokens = {}
+      for (const name of THEME_TOKENS) {
+        const value = style.getPropertyValue(name).trim()
+        if (value) tokens[name] = value
+      }
+      return tokens
+    }
+
     const CSS = `
 .dst-shell{position:relative;display:flex;flex-direction:column;flex:1;height:100%;min-height:0;min-width:0;box-sizing:border-box;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#1f2023);font-family:inherit;font-size:13px;line-height:20px}
 .dst-frame{flex:1;width:100%;height:100%;min-height:0;border:0;display:block;background:var(--dsw-alias-bg-base,#fff)}
@@ -54,6 +77,39 @@ window.__ModuleLoader__.load({
       const stateRef = React.useRef({ phase: 'probing', mounted: false, launchAt: 0 })
       const activeRef = React.useRef(active)
       activeRef.current = active
+      const frameRef = React.useRef(null)
+
+      const pushTheme = React.useCallback(() => {
+        const target = frameRef.current && frameRef.current.contentWindow
+        if (!target) return
+        try {
+          target.postMessage({ type: 'dsh-desic-theme', tokens: readThemeTokens() }, '*')
+        } catch {
+          // iframe 尚未可访问时忽略，onLoad 时会再推一次
+        }
+      }, [])
+
+      React.useEffect(() => {
+        if (!mounted) return
+        pushTheme()
+        const observer = new MutationObserver(() => pushTheme())
+        observer.observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ['class', 'style', 'data-theme', 'data-dsw-theme', 'data-color-scheme']
+        })
+        const media = window.matchMedia('(prefers-color-scheme: dark)')
+        const onMedia = () => pushTheme()
+        media.addEventListener?.('change', onMedia)
+        const onMessage = (event) => {
+          if (event.data && event.data.type === 'dsh-desic-theme-request') pushTheme()
+        }
+        window.addEventListener('message', onMessage)
+        return () => {
+          observer.disconnect()
+          media.removeEventListener?.('change', onMedia)
+          window.removeEventListener('message', onMessage)
+        }
+      }, [mounted, pushTheme])
 
       const probe = React.useCallback(async () => {
         try {
@@ -149,7 +205,7 @@ window.__ModuleLoader__.load({
 
       const launching = phase === 'launching'
       return h('div', { className: 'dst-shell' },
-        mounted ? h('iframe', { key: frameKey, className: 'dst-frame', src: BRIDGE_URL, title: 'Desic Terminal', allow: 'microphone; autoplay; fullscreen; clipboard-read; clipboard-write', allowFullScreen: true }) : null,
+        mounted ? h('iframe', { key: frameKey, ref: frameRef, onLoad: pushTheme, className: 'dst-frame', src: BRIDGE_URL, title: 'Desic Terminal', allow: 'microphone; autoplay; fullscreen; clipboard-read; clipboard-write', allowFullScreen: true }) : null,
         !mounted ? h('div', { className: 'dst-center' },
           h('div', { className: 'dst-card' },
             h('h2', null, 'Desic Terminal'),

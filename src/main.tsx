@@ -13,11 +13,14 @@ import "./theme/phosphor.css";
 import { i18n, initializeI18n } from "./i18n/runtime";
 import { applyPlatformAttribute } from "./lib/platform";
 import { applyVisualPreference } from "./lib/visualPreference";
+import { installHostThemeBridge } from "./lib/hostTheme";
 import { installStallMonitor } from "./lib/stallMonitor";
 
 applyPlatformAttribute();
 // 首帧之前写入外观属性，避免从经典外观闪到磷光外观。
 applyVisualPreference();
+// 嵌入 DSH 面板时跟随宿主主题令牌（父页面 postMessage 推送）。
+installHostThemeBridge();
 
 const searchParams = new URLSearchParams(window.location.search);
 const isMascotPreview =
