@@ -2019,6 +2019,10 @@ button {
   height: 28px;
   border: 1px solid var(--line);
   padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   font-size: 12px;
   border-radius: 4px;
   background: #080a0e;
