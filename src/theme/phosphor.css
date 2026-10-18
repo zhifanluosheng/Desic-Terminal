@@ -733,3 +733,12 @@
 :root[data-visual="phosphor"][data-shell="host"] .chart-wrap :is(table, tbody, tr, td, div) {
   background-color: transparent;
 }
+/* 图表容器边框原本是蓝灰 rgba(174,186,210,0.18)，在宿主同色外壳下显得发蓝；改为中性灰。 */
+:root[data-visual="phosphor"][data-shell="host"] .center-panel .chart-wrap {
+  border-color: rgba(232, 232, 236, 0.1);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+/* 悬浮提示类（价格条/连接状态/导航标签）原为深蓝黑 #10141d；host 外壳提升到面板色。 */
+:root[data-visual="phosphor"][data-shell="host"] :is(.price-strip-tooltip, .connection-tooltip, .rail-item__label) {
+  background-color: #202023;
+}

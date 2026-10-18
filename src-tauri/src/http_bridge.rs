@@ -470,6 +470,9 @@ fn query_param<'a>(path: &'a str, key: &str) -> Option<&'a str> {
 
 /// GET /<path>：托管 dist 静态文件（SPA fallback 到 index.html）。
 async fn serve_static(stream: &mut TcpStream, bridge: &HttpBridge, path: &str) -> io::Result<()> {
+    // 忽略查询串/片段：导航到 /?visual=host、/index.html?chartWindowId=… 都应按路径解析，
+    // 否则带查询串的地址会被当成不存在的相对路径（甚至触发 403）。
+    let path = path.split(['?', '#']).next().unwrap_or("/");
     let rel = path.trim_start_matches('/');
     let rel = if rel.is_empty() { "index.html" } else { rel };
     let mut file_path = bridge.dist_dir.join(rel);
