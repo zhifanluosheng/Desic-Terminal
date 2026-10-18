@@ -117,13 +117,25 @@ export const logger = {
 };
 
 // lightweight-charts 在图表被销毁后，仍可能执行一次已排队的重绘帧并抛出 "Object is disposed"。
-// 图表已经没了，这次重绘本来就无事可做：降为警告，避免每次快速切换周期 / 合约都弹「前端代码异常」。
+// 图表已经没了，这次重绘本来就无事可做：生产构建会把图表库内联进各业务 chunk（如 DepthProfile-*.js），
+// stack 里不会出现包名，所以只按消息判定，并降为警告，避免弹「前端代码异常」。
+// 另外：页面关闭/刷新（pagehide）期间浏览器会销毁图表与画布，此时的所有错误都是 teardown 噪声，直接忽略。
+let pageUnloading = false;
+const markPageUnloading = () => { pageUnloading = true; };
+window.addEventListener("pagehide", markPageUnloading);
+window.addEventListener("beforeunload", markPageUnloading);
+
 function isDisposedChartFrame(event: ErrorEvent) {
-  const stack = event.error instanceof Error ? event.error.stack ?? "" : "";
-  return /Object is disposed/.test(event.message ?? "") && /lightweight-charts/.test(stack);
+  return /Object is disposed/.test(event.message ?? "");
+}
+
+function isDisposedReason(reason: unknown) {
+  const text = reason instanceof Error ? `${reason.name}: ${reason.message}` : String(reason ?? "");
+  return /Object is disposed/.test(text);
 }
 
 window.addEventListener("error", (event) => {
+  if (pageUnloading) return;
   if (isDisposedChartFrame(event)) {
     logger.warn("chart frame after dispose (ignored)", { message: event.message });
     return;
@@ -139,5 +151,10 @@ window.addEventListener("error", (event) => {
 });
 
 window.addEventListener("unhandledrejection", (event) => {
+  if (pageUnloading) return;
+  if (isDisposedReason(event.reason)) {
+    logger.warn("chart frame after dispose (ignored, promise)", { reason: String(event.reason) });
+    return;
+  }
   logger.error("unhandled promise rejection", event.reason);
 });
