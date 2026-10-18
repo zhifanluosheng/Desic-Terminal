@@ -763,3 +763,52 @@
 :root[data-visual="phosphor"][data-shell="host"] :is(.intelligence-context-bar, .intelligence-trend-strip, .intelligence-calendar-band, .intelligence-calendar-view-switch, .intelligence-calendar-workbench, .help-center-toolbar, .help-category-nav, .chart-alert-webhook) {
   background-color: #1b1b1c;
 }
+/* 设置页：.settings-workspace 原 #050506；当前模块卡原蓝紫 tint；页头径向渐变改无。 */
+:root[data-visual="phosphor"][data-shell="host"] .settings-workspace {
+  background-color: #1b1b1c;
+}
+
+:root[data-visual="phosphor"][data-shell="host"] .settings-page-current {
+  background-color: rgba(232, 232, 236, 0.05);
+  border-color: rgba(232, 232, 236, 0.14);
+}
+
+:root[data-visual="phosphor"][data-shell="host"] .settings-page-head {
+  background-image: none;
+}
+
+/* AI 研究页：外壳原 #0a0c10、主列 #0b0d11、输入区 #0b0d11、右侧研究面板 #0c0e13。
+   注意：原规则 `.ai-research-host > .ai-panel.ai-research-shell.sessions-open` 有 4 个类，
+   这里必须用同等/更高特异性，否则被它压掉。 */
+:root[data-visual="phosphor"][data-shell="host"] .ai-research-host > .ai-panel.ai-research-shell {
+  --ai-research-bg: #1b1b1c;
+  --ai-research-surface: #202023;
+  --ai-research-surface-raised: #262629;
+  background-color: #1b1b1c;
+}
+
+:root[data-visual="phosphor"][data-shell="host"] :is(.ai-research-shell .ai-panel-main, .ai-research-shell .ai-session-sidebar) {
+  background-color: #1b1b1c;
+}
+
+:root[data-visual="phosphor"][data-shell="host"] .ai-composer-stack {
+  background-color: #202023;
+}
+
+:root[data-visual="phosphor"][data-shell="host"] :is(.ai-inspector-shortcuts, .ai-inspector-body, .ai-inspector-head, .ai-inspector-tabs) {
+  background-color: #1b1b1c;
+}
+
+/* 委托面板控件：买一/卖一 #0b0e13、全仓/逐仓与张/成本 #05070a。 */
+:root[data-visual="phosphor"][data-shell="host"] :is(.bbo-price-actions button, .ticket-form .segmented) {
+  background-color: #202023;
+}
+
+/* 图表浮层按钮：提醒/指标/图层/视图原 rgba(3,3,3,.72) 或 rgba(5,7,10,.9)。 */
+:root[data-visual="phosphor"][data-shell="host"] :is(.chart-alert-trigger, .chart-indicator-center-trigger, .chart-indicators, .chart-layer-bar, .chart-view-actions) {
+  background-color: rgba(32, 32, 35, 0.92);
+}
+
+:root[data-visual="phosphor"][data-shell="host"] .pressure-panel {
+  background-color: #1b1b1c;
+}
