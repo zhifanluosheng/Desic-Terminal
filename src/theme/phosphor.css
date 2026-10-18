@@ -830,6 +830,12 @@
   background: #1b1b1c;
 }
 
+/* 输入区外层底座：默认 #202023，在 #1b1b1c 的对话区会显出一条更亮的横带；
+   宿主同色下让它融进对话区，只保留输入框本身（#262629）作为抬升面。 */
+:root[data-visual="phosphor"][data-shell="host"] .ai-research-shell .ai-composer-stack {
+  background: transparent;
+}
+
 /* AI 输入框：原 rgba(14,16,21,.94) 比同级 .ai-composer-stack(#202023) 更黑，
    看起来像“挖了个洞”；host 下改为略高于底座的输入面板。 */
 :root[data-visual="phosphor"][data-shell="host"] .ai-research-shell .ai-composer {
