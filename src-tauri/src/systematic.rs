@@ -14925,6 +14925,7 @@ async fn create_local_python_venv(
     command.env_remove("PYTHONHOME");
     command.env_remove("PYTHONPATH");
     command.env_remove("VIRTUAL_ENV");
+    command.env("PYTHONUTF8", "1").env("PYTHONIOENCODING", "utf-8");
     apply_local_python_scratch_environment(&mut |key, value| {
         command.env(key, value);
     });
@@ -15007,6 +15008,7 @@ async fn install_local_python_dependencies(
         command.env_remove("PYTHONHOME");
         command.env_remove("PYTHONPATH");
         command.env_remove("VIRTUAL_ENV");
+        command.env("PYTHONUTF8", "1").env("PYTHONIOENCODING", "utf-8");
         apply_local_python_scratch_environment(&mut |key, value| {
             command.env(key, value);
         });
@@ -15345,15 +15347,26 @@ fn spawn_local_python_stream_drain<R>(
     R: AsyncRead + Unpin + Send + 'static,
 {
     tokio::spawn(async move {
-        let mut lines = tokio::io::BufReader::new(stream).lines();
+        // pip on Windows writes paths in the console code page (e.g. GBK) when
+        // stdout is a pipe, so line-based UTF-8 decoding used to fail on the
+        // first Chinese workspace path and close the pipe ("Pipe to stdout was
+        // broken"). Decode lossily instead: a stray byte must not kill the run.
+        let mut reader = tokio::io::BufReader::new(stream);
+        let mut buffer = Vec::new();
         loop {
-            match lines.next_line().await {
-                Ok(Some(line)) => {
+            buffer.clear();
+            match reader.read_until(b'\n', &mut buffer).await {
+                Ok(0) => break,
+                Ok(_) => {
+                    while matches!(buffer.last(), Some(b'\n') | Some(b'\r')) {
+                        buffer.pop();
+                    }
+                    let line = String::from_utf8_lossy(&buffer).into_owned();
                     if sender.send((output, line)).is_err() {
                         break;
                     }
                 }
-                Ok(None) | Err(_) => break,
+                Err(_) => break,
             }
         }
     });
