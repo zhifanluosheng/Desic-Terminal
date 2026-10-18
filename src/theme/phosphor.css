@@ -812,6 +812,15 @@
   background-color: rgba(32, 32, 35, 0.92);
 }
 
+/* 图层按钮的外层锚点原本是 rgba(3,3,3,.72) 的近黑胶囊（比按钮大一圈），
+   在宿主同色下像一个黑框；去掉后和「提醒」同高同宽。 */
+:root[data-visual="phosphor"][data-shell="host"] .chart-layer-menu-anchor {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 :root[data-visual="phosphor"][data-shell="host"] .pressure-panel {
   background-color: #1b1b1c;
 }

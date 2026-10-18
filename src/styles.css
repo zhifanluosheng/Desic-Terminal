@@ -1997,6 +1997,7 @@ button {
 .chart-actions {
   gap: 6px;
   margin-left: auto;
+  align-items: center;
 }
 
 /* 顶部工具栏里的图表控件停靠位（KlineChart 通过 portal 渲染进来）。 */
