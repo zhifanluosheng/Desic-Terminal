@@ -1965,9 +1965,8 @@ button {
   min-width: 0;
   overflow: visible;
   justify-content: space-between;
-  /* 窗口窄时让「图表控件 + 弹出图表/订单流/表格视图」整组换行，避免互相压住。 */
-  flex-wrap: wrap;
-  row-gap: 6px;
+  /* 单行排布：图表控件与「弹出/订单流/视图」必须和周期按钮同一水平线。 */
+  flex-wrap: nowrap;
   border-bottom: 1px solid rgba(174, 186, 210, 0.18);
   padding: 0 12px;
   background: #07090c;
@@ -1977,7 +1976,7 @@ button {
 .periods {
   position: relative;
   z-index: 1;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
   overflow: visible;
   white-space: nowrap;
@@ -1985,7 +1984,7 @@ button {
 
 .periods button {
   height: 28px;
-  padding: 0 5px;
+  padding: 0 4px;
   font-size: 12px;
 }
 
@@ -1996,7 +1995,7 @@ button {
 }
 
 .chart-actions {
-  gap: 8px;
+  gap: 6px;
   margin-left: auto;
 }
 
@@ -2012,12 +2011,13 @@ button {
   top: auto;
   right: auto;
   max-width: none;
+  gap: 5px;
 }
 
 .chart-actions button {
   height: 28px;
   border: 1px solid var(--line);
-  padding: 0 9px;
+  padding: 0 6px;
   font-size: 12px;
   border-radius: 4px;
   background: #080a0e;
@@ -2028,6 +2028,9 @@ button {
 }
 
 .chart-utilities > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   gap: 5px;
 }
 
@@ -2367,8 +2370,8 @@ button {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px;
+  gap: 4px;
+  padding: 2px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(3, 3, 3, 0.72);
@@ -2390,7 +2393,7 @@ button {
   border-radius: 999px;
   background: transparent;
   color: var(--weak);
-  padding: 0 8px;
+  padding: 0 5px;
   font-size: 11px;
   cursor: pointer;
   transition: color 150ms ease, background 150ms ease;

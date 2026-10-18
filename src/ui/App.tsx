@@ -5427,7 +5427,7 @@ function TradingTerminal({
                     onClick={openDetachedChart}
                     title={t("chart:detachedChartWindow")}
                   >
-                    <Maximize2 size={15} /> {t("chart:popout")}
+                    <Maximize2 size={15} /> {uiText("弹出", "Pop out")}
                   </button>
                   <button
                     type="button"
@@ -5465,7 +5465,7 @@ function TradingTerminal({
                   >
                     <TableProperties size={15} />{" "}
                     {chartPresentation === "chart"
-                      ? t("chart:tableView")
+                      ? uiText("视图", "View")
                       : t("chart:chart")}
                   </button>
                 </div>
