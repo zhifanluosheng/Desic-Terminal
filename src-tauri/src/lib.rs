@@ -4603,7 +4603,10 @@ async fn okx_ticker(inst_id: String) -> Result<Ticker, String> {
 
 #[tauri::command]
 async fn okx_market_tickers() -> Result<Vec<Ticker>, String> {
-    let envelope: OkxEnvelope<Ticker> = get_json("/api/v5/market/tickers?instType=SWAP").await?;
+    // 整表 ticker 会被界面反复轮询，失败时让下一轮补即可：两次尝试足够，
+    // 不再让一次慢请求占着桥连接重试 6 次（实测最慢 19s）。
+    let envelope: OkxEnvelope<Ticker> =
+        get_json_with_retry_budget("/api/v5/market/tickers?instType=SWAP", 2).await?;
     Ok(envelope.data)
 }
 
@@ -24358,17 +24361,30 @@ async fn get_json<T>(path: &str) -> Result<OkxEnvelope<T>, String>
 where
     T: for<'de> Deserialize<'de>,
 {
+    get_json_with_retry_budget::<T>(path, OKX_PUBLIC_REST_RETRY_DELAYS_MS.len() + 1).await
+}
+
+/// Same as `get_json` but with an explicit attempt budget.
+///
+/// Bulk market endpoints are polled continuously and can afford to miss one
+/// refresh; letting them burn the full six-retry backoff (up to ~20s on a slow
+/// route) keeps a bridge connection occupied long enough to delay the UI.
+async fn get_json_with_retry_budget<T>(path: &str, max_attempts: usize) -> Result<OkxEnvelope<T>, String>
+where
+    T: for<'de> Deserialize<'de>,
+{
     let url = format!("{}{}", REST_BASE, path);
     let client = reqwest_client()?;
     let mut last_error = String::new();
-    for attempt in 0..=OKX_PUBLIC_REST_RETRY_DELAYS_MS.len() {
+    let attempts = max_attempts.clamp(1, OKX_PUBLIC_REST_RETRY_DELAYS_MS.len() + 1);
+    for attempt in 0..attempts {
         match get_json_once::<T>(&client, &url, path).await {
             Ok(envelope) => return Ok(envelope),
             Err(err) => {
                 let retryable = err.retryable;
                 let retry_delay_ms = err.retry_delay_ms;
                 last_error = err.message;
-                if !retryable || attempt == OKX_PUBLIC_REST_RETRY_DELAYS_MS.len() {
+                if !retryable || attempt + 1 == attempts {
                     break;
                 }
                 sleep(Duration::from_millis(

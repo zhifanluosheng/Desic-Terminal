@@ -14090,6 +14090,28 @@ fn local_python_setup_log_path() -> PathBuf {
     local_python_environment_root().join(SYSTEMATIC_PYTHON_SETUP_LOG_FILE)
 }
 
+/// Scratch directory handed to the Python subprocesses as `TEMP`/`TMP`.
+///
+/// Windows can deny writes to the user temp folder for processes started from
+/// some workspace locations (observed as `PermissionError` from `tempfile`,
+/// which pip reports as an instant `ERROR: Exception:`). Keeping the scratch
+/// directory next to the environment makes venv creation and pip install work
+/// regardless of the system temp ACLs.
+fn local_python_scratch_dir() -> PathBuf {
+    let dir = local_python_environment_root().join(".tmp");
+    let _ = fs::create_dir_all(&dir);
+    dir
+}
+
+fn apply_local_python_scratch_environment(
+    env: &mut dyn FnMut(&'static str, std::ffi::OsString),
+) {
+    let scratch = local_python_scratch_dir();
+    for key in ["TEMP", "TMP", "TMPDIR"] {
+        env(key, scratch.clone().into_os_string());
+    }
+}
+
 fn local_python_setup_failure_path() -> PathBuf {
     local_python_environment_root().join(SYSTEMATIC_PYTHON_SETUP_FAILURE_FILE)
 }
@@ -14903,6 +14925,9 @@ async fn create_local_python_venv(
     command.env_remove("PYTHONHOME");
     command.env_remove("PYTHONPATH");
     command.env_remove("VIRTUAL_ENV");
+    apply_local_python_scratch_environment(&mut |key, value| {
+        command.env(key, value);
+    });
     apply_local_python_proxy_environment(&mut command, &proxy_environment);
     run_local_python_command(
         &mut command,
@@ -14982,6 +15007,9 @@ async fn install_local_python_dependencies(
         command.env_remove("PYTHONHOME");
         command.env_remove("PYTHONPATH");
         command.env_remove("VIRTUAL_ENV");
+        apply_local_python_scratch_environment(&mut |key, value| {
+            command.env(key, value);
+        });
         // A user-level PIP_INDEX_URL would otherwise override the flag above.
         command.env_remove("PIP_INDEX_URL");
         command.env_remove("PIP_EXTRA_INDEX_URL");
@@ -15203,6 +15231,9 @@ fn configure_local_python_execution_command(command: &mut Command) {
         .env("PYTHONDONTWRITEBYTECODE", "1")
         .env("PYTHONSAFEPATH", "1")
         .env("PYTHONUTF8", "1");
+    apply_local_python_scratch_environment(&mut |key, value| {
+        command.env(key, value);
+    });
     #[cfg(windows)]
     for key in ["SystemRoot", "WINDIR", "ComSpec", "PATHEXT"] {
         if let Some(value) = std::env::var_os(key) {
@@ -15220,6 +15251,9 @@ fn configure_local_python_execution_std_command(command: &mut StdCommand) {
         .env("PYTHONDONTWRITEBYTECODE", "1")
         .env("PYTHONSAFEPATH", "1")
         .env("PYTHONUTF8", "1");
+    apply_local_python_scratch_environment(&mut |key, value| {
+        command.env(key, value);
+    });
     #[cfg(windows)]
     for key in ["SystemRoot", "WINDIR", "ComSpec", "PATHEXT"] {
         if let Some(value) = std::env::var_os(key) {
@@ -17432,6 +17466,9 @@ fn configure_python_sample_command(command: &mut Command) {
         .env("PYTHONDONTWRITEBYTECODE", "1")
         .env("PYTHONSAFEPATH", "1")
         .env("PYTHONUTF8", "1");
+    apply_local_python_scratch_environment(&mut |key, value| {
+        command.env(key, value);
+    });
     #[cfg(windows)]
     for key in ["SystemRoot", "WINDIR", "ComSpec", "PATHEXT"] {
         if let Some(value) = std::env::var_os(key) {

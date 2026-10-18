@@ -938,16 +938,26 @@ function StartupGate({ onEnter, previewFailure }: { onEnter: (assets?: MarketAss
       const synced = await probeOkxStartupNetwork();
       setTimeState(synced);
       updateCheck("network", { status: "running", detail: t("common:startupConnectingPublicWs") });
-      const [wsProbe, businessProbe, ticker] = await Promise.all([
-        testPublicWsReachability(),
-        testBusinessWsReachability(),
-        fetchTicker(DEFAULT_SYMBOL)
-      ]);
+      // 首屏只等 REST 探测 + 最新价；WS 可达性探测改到后台，结果只用来补状态文案。
+      // 原来 public/business/private WS 串在启动路径里：公网 WS 6-7s，再串 private 3-4s，
+      // 用户要等 11-12s 才看到主界面。
+      const ticker = await fetchTicker(DEFAULT_SYMBOL);
       updateCheck("network", {
         status: "passed",
-        detail: `${wsProbe.message} · ${businessProbe.message} · ${t("common:startupLatestPrice", { price: fmtPrice(ticker.last) })}`,
-        latencyMs: Math.max(synced.rttMs, wsProbe.latencyMs, businessProbe.latencyMs)
+        detail: t("common:startupLatestPrice", { price: fmtPrice(ticker.last) }),
+        latencyMs: synced.rttMs
       });
+      void Promise.all([testPublicWsReachability(), testBusinessWsReachability()])
+        .then(([wsProbe, businessProbe]) => {
+          updateCheck("network", {
+            status: "passed",
+            detail: `${wsProbe.message} · ${businessProbe.message} · ${t("common:startupLatestPrice", { price: fmtPrice(ticker.last) })}`,
+            latencyMs: Math.max(synced.rttMs, wsProbe.latencyMs, businessProbe.latencyMs)
+          });
+        })
+        .catch((error) => {
+          logger.warn("startup websocket probe failed", { error: error instanceof Error ? error.message : String(error) });
+        });
 
       updateCheck("config", { status: "running", detail: t("common:startupReadingAccounts") });
       const migration = await migrateSensitiveConfig();
@@ -961,13 +971,22 @@ function StartupGate({ onEnter, previewFailure }: { onEnter: (assets?: MarketAss
 
       const readableAccount = localAccounts.find((item) => item.permissions.read);
       if (readableAccount) {
-        updateCheck("privateWs", { status: "running", detail: t("common:startupCheckingPrivateWs", { account: readableAccount.name }) });
-        const privateProbe = await testPrivateWsReachability(readableAccount.id);
+        // 私有 WS 只做连通性提示，不再阻塞首屏（原来串行等 3-4s）。
         updateCheck("privateWs", {
           status: "passed",
-          detail: privateProbe?.message ?? t("common:startupPrivateWsSkipped", { account: readableAccount.name }),
-          latencyMs: privateProbe?.latencyMs
+          detail: t("common:startupCheckingPrivateWs", { account: readableAccount.name })
         });
+        void testPrivateWsReachability(readableAccount.id)
+          .then((privateProbe) => {
+            updateCheck("privateWs", {
+              status: "passed",
+              detail: privateProbe?.message ?? t("common:startupPrivateWsSkipped", { account: readableAccount.name }),
+              latencyMs: privateProbe?.latencyMs
+            });
+          })
+          .catch((error) => {
+            logger.warn("startup private websocket probe failed", { error: error instanceof Error ? error.message : String(error) });
+          });
       } else {
         updateCheck("privateWs", {
           status: "passed",
