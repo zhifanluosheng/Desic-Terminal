@@ -742,3 +742,24 @@
 :root[data-visual="phosphor"][data-shell="host"] :is(.price-strip-tooltip, .connection-tooltip, .rail-item__label) {
   background-color: #202023;
 }
+/* 右栏（市场深度 / 委托面板）与控制件：原 #06080c / #05070a / #07090c。 */
+:root[data-visual="phosphor"][data-shell="host"] :is(.market-depth, .trade-submit-zone, .bottom-tab-actions) {
+  background-color: #1b1b1c;
+}
+
+:root[data-visual="phosphor"][data-shell="host"] .market-depth {
+  box-shadow: inset 1px 0 rgba(232, 232, 236, 0.05);
+}
+
+:root[data-visual="phosphor"][data-shell="host"] .ticket-tabs button:not(.active) {
+  background-color: #1b1b1c;
+}
+
+:root[data-visual="phosphor"][data-shell="host"] :is(.ticket-form input:not([type="checkbox"]):not([type="range"]), .ticket-form .terminal-select-trigger) {
+  background-color: #202023;
+}
+
+/* 情报页 / 帮助中心 / 图表提醒等同类深色条。 */
+:root[data-visual="phosphor"][data-shell="host"] :is(.intelligence-context-bar, .intelligence-trend-strip, .intelligence-calendar-band, .intelligence-calendar-view-switch, .intelligence-calendar-workbench, .help-center-toolbar, .help-category-nav, .chart-alert-webhook) {
+  background-color: #1b1b1c;
+}
