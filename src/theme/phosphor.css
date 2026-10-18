@@ -723,6 +723,16 @@
     inset 22px 0 28px -22px rgba(0, 0, 0, 0.55),
     inset 0 22px 28px -22px rgba(0, 0, 0, 0.42);
 }
+
+/* 去掉多余的三条细线：rail 右边线、设置页头部下边线（也就是页签上方那条）。 */
+:root[data-visual="phosphor"][data-shell="host"] .rail {
+  border-right-color: transparent;
+}
+
+:root[data-visual="phosphor"][data-shell="host"] .settings-page-head {
+  border-bottom-color: transparent;
+}
+
 /* 设置页 / 图表周边 / 表格视图等硬编码的纯黑面板，host 外壳下统一到宿主色。 */
 :root[data-visual="phosphor"][data-shell="host"] .settings-page-panel {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.026), rgba(255, 255, 255, 0.01)), var(--bg);
