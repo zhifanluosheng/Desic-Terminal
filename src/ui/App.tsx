@@ -5421,6 +5421,8 @@ function TradingTerminal({
                   </div>
                 </div>
                 <div className="chart-actions">
+                  {/* 图表控件（指标/提醒/图层/网格/恢复/重置）由 KlineChart portal 到这里停靠 */}
+                  <div className="chart-toolbar-controls" id="chart-toolbar-controls" />
                   <button
                     onClick={openDetachedChart}
                     title={t("chart:detachedChartWindow")}

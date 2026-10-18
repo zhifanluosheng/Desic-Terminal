@@ -1716,7 +1716,8 @@ button {
   --chart-bottom-min: 168px;
   background: #020305;
   display: grid;
-  grid-template-rows: 44px minmax(0, 1fr) minmax(var(--chart-bottom-min), var(--chart-bottom-size, 24%));
+  /* 首行给最小值 44px：顶部工具栏换行时自动长高，不再把第二行挤出面板。 */
+  grid-template-rows: minmax(44px, auto) minmax(0, 1fr) minmax(var(--chart-bottom-min), var(--chart-bottom-size, 24%));
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -1964,6 +1965,9 @@ button {
   min-width: 0;
   overflow: visible;
   justify-content: space-between;
+  /* 窗口窄时让「图表控件 + 弹出图表/订单流/表格视图」整组换行，避免互相压住。 */
+  flex-wrap: wrap;
+  row-gap: 6px;
   border-bottom: 1px solid rgba(174, 186, 210, 0.18);
   padding: 0 12px;
   background: #07090c;
@@ -1993,6 +1997,21 @@ button {
 
 .chart-actions {
   gap: 8px;
+  margin-left: auto;
+}
+
+/* 顶部工具栏里的图表控件停靠位（KlineChart 通过 portal 渲染进来）。 */
+.chart-toolbar-controls {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.chart-toolbar-controls .chart-control-bar {
+  position: relative;
+  top: auto;
+  right: auto;
+  max-width: none;
 }
 
 .chart-actions button {

@@ -735,8 +735,11 @@
 }
 /* 图表容器边框原本是蓝灰 rgba(174,186,210,0.18)，在宿主同色外壳下显得发蓝；改为中性灰。 */
 :root[data-visual="phosphor"][data-shell="host"] .center-panel .chart-wrap {
-  border-color: rgba(232, 232, 236, 0.1);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border: 0;
+  box-shadow: none;
 }
 /* 悬浮提示类（价格条/连接状态/导航标签）原为深蓝黑 #10141d；host 外壳提升到面板色。 */
 :root[data-visual="phosphor"][data-shell="host"] :is(.price-strip-tooltip, .connection-tooltip, .rail-item__label) {
@@ -825,28 +828,8 @@
   background-color: #1b1b1c;
 }
 
-/* 图表上/左拖拽导条：原紫色斜纹填充，改为 #161616 实色（按用户要求）。
-   导条只覆盖绘图区：越到价格轴/时间轴上方会留下一条明显断色的边。 */
-:root[data-visual="phosphor"][data-shell="host"] :is(.chart-guide-top, .chart-guide-left) {
-  background-image: linear-gradient(#161616, #161616);
-  background-color: #161616;
-  opacity: 1;
-}
-
-:root[data-visual="phosphor"][data-shell="host"] .chart-guide-top {
-  right: var(--chart-price-scale-width, 72px);
-}
-
-:root[data-visual="phosphor"][data-shell="host"] .chart-guide-left {
-  bottom: var(--chart-time-scale-height, 30px);
-}
-
-:root[data-visual="phosphor"][data-shell="host"] :is(.chart-guide-top, .chart-guide-left)::after {
-  background: rgba(232, 232, 236, 0.18);
-  box-shadow: none;
-}
-
-/* 图表右上控件条（指标/提醒/图层/网格/恢复/重置）：下移 10px，避开顶部导条。 */
-:root[data-visual="phosphor"][data-shell="host"] .chart-control-bar {
+/* 图表右上控件条（指标/提醒/图层/网格/恢复/重置）：下移 10px，避开顶部导条。
+   主图已把这排控件停靠到顶部工具栏（.chart-control-bar--docked），只有浮层形态才需要位移。 */
+:root[data-visual="phosphor"][data-shell="host"] .chart-control-bar:not(.chart-control-bar--docked) {
   top: 18px;
 }

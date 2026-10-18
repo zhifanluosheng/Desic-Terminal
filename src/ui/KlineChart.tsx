@@ -1,4 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../i18n/runtime";
 import clsx from "clsx";
@@ -91,6 +92,19 @@ export type ChartHistoryLoadOutcome =
   | { status: "exhausted" }
   | { status: "deferred" }
   | { status: "failed"; message: string };
+
+/**
+ * 图表右上那排控件（指标 / 提醒 / 图层 / 网格 / 恢复 / 重置）。
+ * 主图会把它 portal 到顶部工具栏的 `#chart-toolbar-controls` 停靠点里，
+ * 其余场景（预览、独立窗口、没有停靠点）仍渲染成图内浮层。
+ */
+function ChartControlBarShell({ mount, children }: { mount: HTMLElement | null; children: ReactNode }) {
+  if (!mount) return <div className="chart-control-bar">{children}</div>;
+  return createPortal(
+    <div className="chart-control-bar chart-control-bar--docked">{children}</div>,
+    mount,
+  );
+}
 
 type Props = {
   candles: Candle[];
@@ -601,6 +615,13 @@ export function KlineChart({ candles, orderFlowMode = false, orderFlowPreview = 
   const [drawMode, setDrawMode] = useState(false);
   const [drawingTool, setDrawingTool] = useState<DrawingTool>("trend");
   const [lineToolMenuOpen, setLineToolMenuOpen] = useState(false);
+  const [controlBarMount, setControlBarMount] = useState<HTMLElement | null>(null);
+  // 主图把「指标/提醒/图层/网格/恢复/重置」停靠到顶部工具栏，浮在 K 线上会压住
+  // 价格轴最上面的刻度；找不到停靠点（预览/独立窗口）时回退到图内浮层。
+  useEffect(() => {
+    if (reviewVariant || toolbarPlacement !== "floating") return;
+    setControlBarMount(document.getElementById("chart-toolbar-controls"));
+  }, [reviewVariant, toolbarPlacement]);
   const [layerMenuOpen, setLayerMenuOpen] = useState(false);
   const [alertPanelOpen, setAlertPanelOpen] = useState(false);
   const [pendingDrawPoint, setPendingDrawPoint] = useState<MeasurePoint | null>(null);
@@ -2934,7 +2955,7 @@ export function KlineChart({ candles, orderFlowMode = false, orderFlowPreview = 
         onToggleCustomIndicatorVisibility={toggleCustomIndicatorVisibility}
         onRemoveCustomIndicator={removeCustomIndicatorFromChart}
       />}
-      {!reviewVariant && toolbarPlacement === "floating" && <div className="chart-control-bar">
+      {!reviewVariant && toolbarPlacement === "floating" && <ChartControlBarShell mount={controlBarMount}>
         <ChartIndicatorCenter
           instances={indicatorInstances}
           onChange={handleIndicatorInstancesChange}
@@ -3134,7 +3155,7 @@ export function KlineChart({ candles, orderFlowMode = false, orderFlowPreview = 
             {chartText("Reset", "重置")}
           </button>
         </div>
-      </div>}
+      </ChartControlBarShell>}
       {!reviewVariant && <div className="chart-drawing-toolbar" aria-label={chartText("Drawing tools", "绘图工具")}>
         <div className="chart-line-tool-anchor">
           <button
@@ -3487,8 +3508,6 @@ export function KlineChart({ candles, orderFlowMode = false, orderFlowPreview = 
           </button>
         </div>
       ))}
-      {!reviewVariant && <div className="chart-guide-top" title={chartText("Drag down to create a horizontal line", "向下拖拽创建水平线")} onPointerDown={(event) => startGuideDrag("horizontal", event)} />}
-      {!reviewVariant && <div className="chart-guide-left" title={chartText("Drag right to create a vertical line", "向右拖拽创建垂直线")} onPointerDown={(event) => startGuideDrag("vertical", event)} />}
       <div
         className={clsx(
           "chart-canvas",
