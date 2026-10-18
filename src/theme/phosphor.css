@@ -812,3 +812,32 @@
 :root[data-visual="phosphor"][data-shell="host"] .pressure-panel {
   background-color: #1b1b1c;
 }
+/* AI 输入框：原 rgba(14,16,21,.94) 比同级 .ai-composer-stack(#202023) 更黑，
+   看起来像“挖了个洞”；host 下改为略高于底座的输入面板。 */
+:root[data-visual="phosphor"][data-shell="host"] .ai-research-shell .ai-composer {
+  background-color: #262629;
+  border-color: rgba(232, 232, 236, 0.14);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22), inset 0 1px rgba(255, 255, 255, 0.03);
+}
+
+/* 会话栏拖拽把手：原 #0b0d11。 */
+:root[data-visual="phosphor"][data-shell="host"] .ai-research-shell .ai-column-resize {
+  background-color: #1b1b1c;
+}
+
+/* 图表上/左拖拽导条：原紫色斜纹填充，改为 #161616 实色（按用户要求）。 */
+:root[data-visual="phosphor"][data-shell="host"] :is(.chart-guide-top, .chart-guide-left) {
+  background-image: linear-gradient(#161616, #161616);
+  background-color: #161616;
+  opacity: 1;
+}
+
+:root[data-visual="phosphor"][data-shell="host"] :is(.chart-guide-top, .chart-guide-left)::after {
+  background: rgba(232, 232, 236, 0.18);
+  box-shadow: none;
+}
+
+/* 图表右上控件条（指标/提醒/图层/网格/恢复/重置）：下移 10px，避开顶部导条。 */
+:root[data-visual="phosphor"][data-shell="host"] .chart-control-bar {
+  top: 18px;
+}
