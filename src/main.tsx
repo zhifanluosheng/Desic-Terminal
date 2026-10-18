@@ -21,6 +21,10 @@ applyPlatformAttribute();
 applyVisualPreference();
 // 嵌入 DSH 面板时跟随宿主主题令牌（父页面 postMessage 推送）。
 installHostThemeBridge();
+// 运行在 iframe 里时给 html 打标记：衔接处的边缘/投影只在嵌入态出现。
+if (window.parent !== window) {
+  document.documentElement.dataset.embedded = "1";
+}
 
 const searchParams = new URLSearchParams(window.location.search);
 const isMascotPreview =
