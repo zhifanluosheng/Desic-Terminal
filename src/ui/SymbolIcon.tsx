@@ -16,6 +16,67 @@ const iconDataUrlRequests = new Map<string, Promise<string | null>>();
 const iconDownloadFailures = new Map<string, number>();
 const ICON_DOWNLOAD_RETRY_MS = 5 * 60_000;
 
+/**
+ * 图标是「每个交易对一次桥调用」。启动时一屏几十个图标会同时挤满 HTTP/1.1
+ * 的 6 条连接（实测 83 次调用、平均排队 765ms，把行情和页面数据都堵在后面），
+ * 所以这里限制并发；拿到的 data URL 也持久化到 localStorage，二次启动直接复用。
+ */
+const ICON_CACHE_STORAGE_KEY = "desic.market-icons.v1";
+const ICON_REQUEST_CONCURRENCY = 2;
+const ICON_CACHE_MAX_ENTRIES = 400;
+let iconActiveRequests = 0;
+let iconPersistTimer: number | null = null;
+const iconRequestQueue: Array<() => void> = [];
+
+function acquireIconSlot(): Promise<void> {
+  if (iconActiveRequests < ICON_REQUEST_CONCURRENCY) {
+    iconActiveRequests += 1;
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => {
+    iconRequestQueue.push(() => {
+      iconActiveRequests += 1;
+      resolve();
+    });
+  });
+}
+
+function releaseIconSlot() {
+  iconActiveRequests = Math.max(0, iconActiveRequests - 1);
+  iconRequestQueue.shift()?.();
+}
+
+function rememberIcon(path: string, dataUrl: string) {
+  iconDataUrls.set(path, dataUrl);
+  if (iconDataUrls.size > ICON_CACHE_MAX_ENTRIES) return;
+  if (iconPersistTimer !== null) window.clearTimeout(iconPersistTimer);
+  iconPersistTimer = window.setTimeout(() => {
+    iconPersistTimer = null;
+    try {
+      const payload: Record<string, string> = {};
+      for (const [key, value] of iconDataUrls) payload[key] = value;
+      window.localStorage.setItem(ICON_CACHE_STORAGE_KEY, JSON.stringify(payload));
+    } catch {
+      // localStorage 写满时放弃持久化，内存缓存继续生效
+    }
+  }, 1200);
+}
+
+function restorePersistedIcons() {
+  try {
+    const raw = window.localStorage.getItem(ICON_CACHE_STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as Record<string, string>;
+    for (const [path, dataUrl] of Object.entries(parsed)) {
+      if (typeof dataUrl === "string" && dataUrl.startsWith("data:")) iconDataUrls.set(path, dataUrl);
+    }
+  } catch {
+    // 缓存损坏或 localStorage 不可用，忽略
+  }
+}
+
+restorePersistedIcons();
+
 function fallbackIconPath(base: string, cacheDir?: string | null) {
   if (!base) return "";
   const fileName = `${base.toLowerCase()}.png`;
@@ -50,9 +111,15 @@ function loadIconDataUrl(path: string, base: string) {
   const canDownload = /^[A-Z0-9]{1,32}$/.test(normalizedBase);
   const request = (async () => {
     try {
-      const local = await invokeDesktop<string>("market_icon_data_url", { path }, { quiet: true });
+      await acquireIconSlot();
+      let local: string | null = "";
+      try {
+        local = await invokeDesktop<string>("market_icon_data_url", { path }, { quiet: true });
+      } finally {
+        releaseIconSlot();
+      }
       if (local) {
-        iconDataUrls.set(path, local);
+        rememberIcon(path, local);
         iconDownloadFailures.delete(normalizedBase);
         return local;
       }
@@ -67,9 +134,15 @@ function loadIconDataUrl(path: string, base: string) {
     const failedAt = iconDownloadFailures.get(normalizedBase) ?? 0;
     if (Date.now() - failedAt < ICON_DOWNLOAD_RETRY_MS) return null;
     try {
-      const downloaded = await invokeDesktop<string>("ensure_market_icon_data_url", { base: normalizedBase }, { quiet: true });
+      await acquireIconSlot();
+      let downloaded: string | null = "";
+      try {
+        downloaded = await invokeDesktop<string>("ensure_market_icon_data_url", { base: normalizedBase }, { quiet: true });
+      } finally {
+        releaseIconSlot();
+      }
       if (downloaded) {
-        iconDataUrls.set(path, downloaded);
+        rememberIcon(path, downloaded);
         iconDownloadFailures.delete(normalizedBase);
         return downloaded;
       }
