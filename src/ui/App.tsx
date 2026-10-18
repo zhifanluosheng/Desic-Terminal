@@ -4865,10 +4865,14 @@ function TradingTerminal({
       {
         id: "action:visual",
         group: actionGroup,
-        label: visualPreference === "phosphor" ? uiText("切换为经典外观", "Switch to classic appearance") : uiText("切换为磷光外观", "Switch to Phosphor appearance"),
-        keywords: "appearance theme visual phosphor classic",
+        label: visualPreference === "phosphor"
+          ? uiText("切换为宿主同色外观", "Switch to host-shell appearance")
+          : visualPreference === "host"
+            ? uiText("切换为经典外观", "Switch to classic appearance")
+            : uiText("切换为磷光外观", "Switch to Phosphor appearance"),
+        keywords: "appearance theme visual phosphor host classic",
         icon: <Settings size={14} />,
-        run: () => saveVisualPreference(visualPreference === "phosphor" ? "classic" : "phosphor")
+        run: () => saveVisualPreference(visualPreference === "phosphor" ? "host" : visualPreference === "host" ? "classic" : "phosphor")
       },
       { id: "action:popout", group: actionGroup, label: t("chart:detachedChartWindow"), keywords: "chart window popout", icon: <Maximize2 size={14} />, run: openDetachedChart },
       {
@@ -4972,7 +4976,7 @@ function TradingTerminal({
             ...base,
             body: <span className="workspace-overview__rows">
               <span><b>{uiText("账户", "Account")}</b><em>{account ? `${account.name} · ${account.environment === "live" ? t("common:live") : t("common:demo")}` : t("common:unconfiguredAccount")}</em></span>
-              <span><b>{uiText("外观", "Appearance")}</b><em>{visualPreference === "phosphor" ? uiText("磷光", "Phosphor") : uiText("经典", "Classic")}</em></span>
+              <span><b>{uiText("外观", "Appearance")}</b><em>{visualPreference === "phosphor" ? uiText("磷光", "Phosphor") : visualPreference === "host" ? uiText("宿主同色", "Host shell") : uiText("经典", "Classic")}</em></span>
             </span>
           };
         case "opportunities":
@@ -8688,6 +8692,7 @@ function AppearanceSettings() {
   useEffect(() => subscribeVisualPreference(setVisual), []);
   const options: Array<[VisualPreference, string, string]> = [
     ["phosphor", t("settings:appearancePhosphor"), t("settings:appearancePhosphorDescription")],
+    ["host", t("settings:appearanceHost"), t("settings:appearanceHostDescription")],
     ["classic", t("settings:appearanceClassic"), t("settings:appearanceClassicDescription")]
   ];
   return (

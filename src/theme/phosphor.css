@@ -680,3 +680,26 @@
     display: none;
   }
 }
+
+/* ============================================================
+ * 宿主同色外壳（Host shell）
+ * 外壳（页面底色 / 终端底 / 轨道 / 顶栏）与 DSH 宿主一致：#1B1B1C。
+ * 只改外壳与面板层级的中性灰，不动磷光的实时发光与价格逐位滚动。
+ * ============================================================ */
+:root[data-visual="phosphor"][data-shell="host"] {
+  --bg: #1b1b1c;
+  --panel: #202023;
+  --panel-2: #262629;
+  --surface-raised: #222225;
+  --line: rgba(232, 232, 236, 0.13);
+  --line-soft: rgba(232, 232, 236, 0.07);
+}
+
+:root[data-visual="phosphor"][data-shell="host"],
+:root[data-visual="phosphor"][data-shell="host"] body {
+  background-color: #1b1b1c;
+}
+
+:root[data-visual="phosphor"][data-shell="host"] .terminal {
+  background: #1b1b1c;
+}
