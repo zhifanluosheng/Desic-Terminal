@@ -825,11 +825,20 @@
   background-color: #1b1b1c;
 }
 
-/* 图表上/左拖拽导条：原紫色斜纹填充，改为 #161616 实色（按用户要求）。 */
+/* 图表上/左拖拽导条：原紫色斜纹填充，改为 #161616 实色（按用户要求）。
+   导条只覆盖绘图区：越到价格轴/时间轴上方会留下一条明显断色的边。 */
 :root[data-visual="phosphor"][data-shell="host"] :is(.chart-guide-top, .chart-guide-left) {
   background-image: linear-gradient(#161616, #161616);
   background-color: #161616;
   opacity: 1;
+}
+
+:root[data-visual="phosphor"][data-shell="host"] .chart-guide-top {
+  right: var(--chart-price-scale-width, 72px);
+}
+
+:root[data-visual="phosphor"][data-shell="host"] .chart-guide-left {
+  bottom: var(--chart-time-scale-height, 30px);
 }
 
 :root[data-visual="phosphor"][data-shell="host"] :is(.chart-guide-top, .chart-guide-left)::after {

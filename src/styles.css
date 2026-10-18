@@ -2332,7 +2332,8 @@ button {
 .chart-control-bar {
   position: absolute;
   top: 8px;
-  right: 12px;
+  /* 让开右侧价格轴：否则“恢复/重置”会压住价格轴最上面的刻度（如 88,000）。 */
+  right: calc(var(--chart-price-scale-width, 72px) + 12px);
   z-index: 120;
   display: flex;
   align-items: center;

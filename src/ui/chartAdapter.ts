@@ -245,6 +245,32 @@ export function createTradingChart(container: HTMLElement, lineConfigs: ChartLin
   };
   const unsubscribeTheme = subscribeVisualPreference(applyChartTheme);
 
+  /**
+   * 右侧价格轴宽度会随价格位数变化，底部时间轴高度随字体/缩放变化。
+   * 顶部控件条、顶部/左侧导条必须让开这两条轴，否则会压住价格轴最上面的
+   * 刻度标签（例如 88,000）或时间刻度。把实测尺寸同步成 CSS 变量。
+   */
+  const syncAxisMetrics = () => {
+    try {
+      const cssHost = container.parentElement ?? container;
+      const priceScaleWidth = Math.round(chart.priceScale("right").width());
+      if (priceScaleWidth > 0) {
+        cssHost.style.setProperty("--chart-price-scale-width", `${priceScaleWidth}px`);
+      }
+      const paneHeight = chart.panes().reduce((total, pane) => total + pane.getHeight(), 0);
+      const timeScaleHeight = Math.round(container.clientHeight - paneHeight);
+      if (timeScaleHeight > 0) {
+        cssHost.style.setProperty("--chart-time-scale-height", `${timeScaleHeight}px`);
+      }
+    } catch {
+      // chart 已销毁
+    }
+  };
+  syncAxisMetrics();
+  const axisMetricsObserver =
+    typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => syncAxisMetrics());
+  axisMetricsObserver?.observe(container);
+
   const candleSeries = chart.addSeries(CandlestickSeries, {
     upColor: "#f6465d",
     downColor: "#0ecb81",
@@ -749,6 +775,7 @@ export function createTradingChart(container: HTMLElement, lineConfigs: ChartLin
     },
     onVisibleRangeChange: (handler) => {
       const listener = (range: LogicalRange | null) => {
+        syncAxisMetrics();
         handler(range ? { from: Number(range.from), to: Number(range.to) } : null);
       };
       chart.timeScale().subscribeVisibleLogicalRangeChange(listener);
@@ -775,7 +802,7 @@ export function createTradingChart(container: HTMLElement, lineConfigs: ChartLin
     },
     attachCandlePrimitive: (primitive) => candleSeries.attachPrimitive(primitive),
     detachCandlePrimitive: (primitive) => candleSeries.detachPrimitive(primitive),
-    destroy: () => { unsubscribeTheme(); chart.remove(); }
+    destroy: () => { axisMetricsObserver?.disconnect(); unsubscribeTheme(); chart.remove(); }
   };
 }
 
