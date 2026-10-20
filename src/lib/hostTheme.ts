@@ -22,6 +22,8 @@ const TOKEN_MAP: Record<string, string> = {
 type ThemeMessage = {
   type?: string;
   tokens?: Record<string, unknown>;
+  /** 宿主工作台面板的圆角半径（用于让接缝描边在圆角处闭合）。 */
+  radiusPx?: number;
 };
 
 function applyTokens(tokens: Record<string, unknown>) {
@@ -34,6 +36,11 @@ function applyTokens(tokens: Record<string, unknown>) {
   }
 }
 
+function applyRadius(radiusPx: unknown) {
+  const radius = typeof radiusPx === "number" && Number.isFinite(radiusPx) ? radiusPx : 0;
+  document.documentElement.style.setProperty("--dsh-panel-radius", `${Math.max(0, radius)}px`);
+}
+
 export function installHostThemeBridge() {
   if (typeof window === "undefined" || window.parent === window) return;
   window.addEventListener("message", (event) => {
@@ -41,6 +48,7 @@ export function installHostThemeBridge() {
     const data = event.data as ThemeMessage | null;
     if (!data || data.type !== "dsh-desic-theme" || !data.tokens) return;
     applyTokens(data.tokens);
+    if (typeof data.radiusPx === "number") applyRadius(data.radiusPx);
   });
   // 监听器装好后主动向宿主索要一次：iframe 首次加载时宿主可能先于监听发送。
   try {

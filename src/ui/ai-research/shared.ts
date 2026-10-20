@@ -72,17 +72,19 @@ export function cacheAiSessionView(cache: Map<string, AiSessionViewCache>, sessi
   }
 }
 
-export type AiResearchColumnWidths = { sessions: number; inspector: number };
+export type AiResearchColumnWidths = { sessions: number; inspector: number; chat: number };
 
 export function readAiResearchColumnWidths(): AiResearchColumnWidths {
   try {
     const parsed = JSON.parse(window.localStorage.getItem("desic.ai-research.columns") || "{}") as Partial<AiResearchColumnWidths>;
     return {
       sessions: Number.isFinite(parsed.sessions) ? Math.max(210, Math.min(420, Number(parsed.sessions))) : 252,
-      inspector: Number.isFinite(parsed.inspector) ? Math.max(300, Math.min(720, Number(parsed.inspector))) : 380
+      inspector: Number.isFinite(parsed.inspector) ? Math.max(300, Math.min(720, Number(parsed.inspector))) : 380,
+      // 工作台两栏：左栏对话、右栏研究面板，中间可拖拽。
+      chat: Number.isFinite(parsed.chat) ? Math.max(360, Math.min(1100, Number(parsed.chat))) : 640
     };
   } catch {
-    return { sessions: 252, inspector: 380 };
+    return { sessions: 252, inspector: 380, chat: 640 };
   }
 }
 

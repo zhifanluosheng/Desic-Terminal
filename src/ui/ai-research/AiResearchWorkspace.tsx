@@ -74,6 +74,7 @@ import {
 import { AiCommandPalette } from "../AiCommandPalette";
 import { AiContextMeter } from "../AiContextMeter";
 import { AiResearchWelcome } from "../AiResearchWelcome";
+import { QUICK_PROMPTS } from "./welcome-prompts";
 import { AiResearchInspector, type InspectorSection } from "../AiResearchInspector";
 import { AiEvidenceSummaryStrip } from "./AiEvidenceBoard";
 import { deriveEvidenceLedger } from "../../lib/aiEvidenceLedger";
@@ -256,7 +257,7 @@ export function AiResearchWorkspace({ active = true, preview, onOpenSettings, on
   // 聚焦模式：会话级状态，不持久化；仅通过 CSS 类收起周边列，不改默认网格。
   const [focusMode, setFocusMode] = useState(false);
   const [columnWidths, setColumnWidths] = useState(() => readAiResearchColumnWidths());
-  const resizeRef = useRef<{ column: "sessions" | "inspector"; pointerId: number; origin: number; startWidth: number } | null>(null);
+  const resizeRef = useRef<{ column: "sessions" | "inspector" | "chat"; pointerId: number; origin: number; startWidth: number } | null>(null);
   const messagesRef = useRef<AiUiMessage[]>(messages);
   const statusRef = useRef(status);
   const workspaceActiveRef = useRef(active);
@@ -451,10 +452,17 @@ export function AiResearchWorkspace({ active = true, preview, onOpenSettings, on
     const onPointerMove = (event: PointerEvent) => {
       const resize = resizeRef.current;
       if (!resize || event.pointerId !== resize.pointerId) return;
-      const next = resize.column === "sessions"
-        ? resize.startWidth + event.clientX - resize.origin
-        : resize.startWidth + resize.origin - event.clientX;
-      setColumnWidths((current) => ({ ...current, [resize.column]: Math.max(resize.column === "sessions" ? 210 : 300, Math.min(resize.column === "sessions" ? 420 : 720, next)) }));
+      // 会话栏在左（向右拖变宽）、研究栏在右（向左拖变宽）；对话栏同样在左。
+      const next = resize.column === "inspector"
+        ? resize.startWidth + resize.origin - event.clientX
+        : resize.startWidth + event.clientX - resize.origin;
+      setColumnWidths((current) => ({
+        ...current,
+        [resize.column]: Math.max(
+          resize.column === "sessions" ? 210 : resize.column === "chat" ? 360 : 300,
+          Math.min(resize.column === "sessions" ? 420 : resize.column === "chat" ? 1100 : 720, next)
+        )
+      }));
     };
     const onPointerUp = (event: PointerEvent) => {
       if (resizeRef.current?.pointerId === event.pointerId) resizeRef.current = null;
@@ -1208,13 +1216,22 @@ export function AiResearchWorkspace({ active = true, preview, onOpenSettings, on
     setInspectorOpen(true);
   };
 
-  const beginColumnResize = (column: "sessions" | "inspector", event: ReactPointerEvent<HTMLButtonElement>) => {
+  const beginColumnResize = (column: "sessions" | "inspector" | "chat", event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
     resizeRef.current = { column, pointerId: event.pointerId, origin: event.clientX, startWidth: columnWidths[column] };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
   const showWelcomeDeck = messages.length === 0 || isWelcomeGreetingOnlyMessages(messages);
+  // 工作台右栏同步展示智能体的最新分析结论（与左侧对话同源）。
+  const workbenchLatest = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message.id === "welcome") continue;
+      if (message.role === "assistant" && message.text) return message;
+    }
+    return null;
+  }, [messages]);
   /* composer：空态渲染进居中构图（标题/快捷建议同轴），常规态停靠底部——同一元素单点渲染，状态零复制 */
   const composerNode = (
             <div className="ai-composer-stack">
@@ -1405,7 +1422,7 @@ export function AiResearchWorkspace({ active = true, preview, onOpenSettings, on
     <div className="ai-dock ai-research-host" hidden={!active}>
       <section
         className={clsx("ai-panel ai-research-shell sessions-open", inspectorOpen && "inspector-open", focusMode && "ai-focus-mode")}
-        style={{ "--ai-sessions-width": `${columnWidths.sessions}px`, "--ai-inspector-width": inspectorOpen && inspectorSection === "evidence" ? `max(${columnWidths.inspector}px, clamp(540px, 44vw, 660px))` : `${columnWidths.inspector}px` } as CSSProperties}
+        style={{ "--ai-sessions-width": `${columnWidths.sessions}px`, "--ai-chat-width": `${columnWidths.chat}px`, "--ai-inspector-width": inspectorOpen && inspectorSection === "evidence" ? `max(${columnWidths.inspector}px, clamp(540px, 44vw, 660px))` : `${columnWidths.inspector}px` } as CSSProperties}
         aria-label={t("automation:aiConversation")}
       >
           <aside className="ai-session-sidebar open" aria-label={t("automation:sessionHistory")}>
@@ -1651,7 +1668,7 @@ export function AiResearchWorkspace({ active = true, preview, onOpenSettings, on
             {/* 空会话（或仅含欢迎语）时在滚动区内渲染任务甲板；欢迎语本身不渲染，由甲板标题替代 */}
             {(messages.length === 0 || isWelcomeGreetingOnlyMessages(messages)) ? (
               <div className="ai-research-welcome-host">
-                <AiResearchWelcome uiText={uiText} onSend={(prompt) => { void submit(undefined, prompt); }} />
+                <AiResearchWelcome uiText={uiText} hideQuick onSend={(prompt) => { void submit(undefined, prompt); }} />
                 {composerNode}
               </div>
             ) : null}
@@ -1674,6 +1691,45 @@ export function AiResearchWorkspace({ active = true, preview, onOpenSettings, on
               </button>
             ) : null}
             {showWelcomeDeck ? null : composerNode}
+            <button
+              type="button"
+              className="ai-column-resize ai-column-resize-chat"
+              aria-label={uiText("调整对话栏宽度", "Resize chat column")}
+              title={uiText("拖动调整对话栏宽度", "Drag to resize the chat column")}
+              onPointerDown={(event) => beginColumnResize("chat", event)}
+            >
+              <GripVertical size={14} />
+            </button>
+            <aside className="ai-workbench-research" aria-label={uiText("交易 AI 研究面板", "Trading AI research panel")}>
+              <div className="ai-workbench-research-head">
+                <strong>{uiText("交易 AI 研究", "Trading AI research")}</strong>
+                <span>{uiText("与左侧智能体共享行情、盘口与持仓数据", "Shares quotes, order book and positions with the chat agent")}</span>
+              </div>
+              <div className="ai-workbench-quick">
+                {QUICK_PROMPTS.map((prompt) => (
+                  <button
+                    type="button"
+                    key={prompt.id}
+                    title={uiText(prompt.zh, prompt.en)}
+                    onClick={() => { void submit(undefined, uiText(prompt.zh, prompt.en)); }}
+                  >
+                    <CornerDownRight size={12} />{uiText(prompt.zh, prompt.en)}
+                  </button>
+                ))}
+              </div>
+              <div className="ai-workbench-latest">
+                <header>{uiText("最新分析", "Latest analysis")}</header>
+                {workbenchLatest?.text ? (
+                  <div className="ai-workbench-latest-body">
+                    <MarkdownMessage content={workbenchLatest.text} />
+                  </div>
+                ) : (
+                  <p className="ai-workbench-empty">
+                    {uiText("在左侧提问，这里会同步显示智能体的分析结果。", "Ask on the left; the agent's analysis result syncs here.")}
+                  </p>
+                )}
+              </div>
+            </aside>
           </div>
           {inspectorOpen ? <button type="button" className="ai-column-resize ai-column-resize-inspector" aria-label={uiText("调整研究栏宽度", "Resize research panel")} title={uiText("拖动调整研究栏宽度", "Drag to resize research panel")} onPointerDown={(event) => beginColumnResize("inspector", event)}><GripVertical size={14} /></button> : null}
           <AiResearchInspector sessionId={sessionId} artifact={inspectorArtifact} selectedSymbol={selectedSymbol} accountId={accountId} accountLabel={accountLabel} skillDefinitions={skillOptions} open={inspectorOpen} section={inspectorSection} onSectionChange={setInspectorSection} onClose={() => setInspectorOpen(false)} onOpenStrategy={onOpenStrategy} onOpenIntelligence={onOpenIntelligence} onOpenTrading={onOpenTrading} onResearchPrompt={insertResearchPrompt} onOpenMessage={openAiMessageById} evidenceMessage={evidenceMessage} evidenceRunning={isStreaming && evidenceMessage?.id === latestAssistantId} onOpenEvidenceArtifact={(artifact) => { setInspectorArtifact(artifact); openInspectorSection("artifacts"); }} marketAssets={marketAssets} marketTickers={marketTickers} cacheDir={cacheDir} uiText={uiText} />

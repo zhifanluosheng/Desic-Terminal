@@ -709,7 +709,9 @@
   background: var(--bg);
 }
 
-/* 与 DSH 的接缝：上边/左边各一条 1px 亮线（不要阴影投影，视觉更干净）。 */
+/* 与 DSH 的接缝：上边/左边各一条 1px 亮线（不要阴影投影，视觉更干净）。
+   左上角按宿主面板圆角（--dsh-panel-radius，由插件实测后注入）画弧线，
+   否则宿主用 overflow 裁切圆角时，这一段描边会被裁掉、看起来“缺一块”。 */
 :root[data-visual="phosphor"][data-shell="host"] .terminal::after {
   content: "";
   position: absolute;
@@ -718,6 +720,7 @@
   pointer-events: none;
   border-top: 1px solid var(--dsh-border-l2, rgba(232, 232, 236, 0.16));
   border-left: 1px solid var(--dsh-border-l2, rgba(232, 232, 236, 0.16));
+  border-radius: var(--dsh-panel-radius, 0px) 0 0 0;
 }
 
 /* 去掉多余的三条细线：rail 右边线、设置页头部下边线（也就是页签上方那条）。 */

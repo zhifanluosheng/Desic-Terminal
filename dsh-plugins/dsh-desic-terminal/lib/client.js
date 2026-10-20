@@ -45,6 +45,25 @@ window.__ModuleLoader__.load({
       return tokens
     }
 
+    /**
+     * 工作台面板外框的圆角半径：宿主用 overflow + border-radius 裁切 iframe，
+     * 应用内画的接缝亮边如果不带同样的圆角，左上角那一段会被裁掉（缺一块）。
+     * 这里把实测半径传给应用，让它自己画出完整的圆角描边。
+     */
+    function readClipRadius(element) {
+      let node = element && element.parentElement
+      while (node && node !== document.body) {
+        const style = getComputedStyle(node)
+        const clips = /hidden|clip/.test(`${style.overflow} ${style.overflowX} ${style.overflowY}`)
+        if (clips) {
+          const radius = parseFloat(style.borderTopLeftRadius) || 0
+          if (radius > 0) return radius
+        }
+        node = node.parentElement
+      }
+      return 0
+    }
+
     const CSS = `
 .dst-shell{position:relative;display:flex;flex-direction:column;flex:1;height:100%;min-height:0;min-width:0;box-sizing:border-box;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#1f2023);font-family:inherit;font-size:13px;line-height:20px}
 .dst-frame{flex:1;width:100%;height:100%;min-height:0;border:0;display:block;background:var(--dsw-alias-bg-base,#fff)}
@@ -80,10 +99,15 @@ window.__ModuleLoader__.load({
       const frameRef = React.useRef(null)
 
       const pushTheme = React.useCallback(() => {
-        const target = frameRef.current && frameRef.current.contentWindow
+        const frame = frameRef.current
+        const target = frame && frame.contentWindow
         if (!target) return
         try {
-          target.postMessage({ type: 'dsh-desic-theme', tokens: readThemeTokens() }, '*')
+          target.postMessage({
+            type: 'dsh-desic-theme',
+            tokens: readThemeTokens(),
+            radiusPx: readClipRadius(frame)
+          }, '*')
         } catch {
           // iframe 尚未可访问时忽略，onLoad 时会再推一次
         }
