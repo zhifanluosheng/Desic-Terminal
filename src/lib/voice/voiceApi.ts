@@ -170,7 +170,7 @@ export function createVoiceStream(onPartial: (text: string) => void): VoiceStrea
     if (closed) dispose?.();
     else unlisten = dispose;
   });
-  let queue: Promise<void> = invokeDesktop("voice_stream_start").then(
+  let queue: Promise<void> = invokeDesktop("voice_stream_start", undefined, { quiet: true }).then(
     () => undefined,
     (error) => {
       failure = new Error(messageOf(error));
@@ -181,7 +181,7 @@ export function createVoiceStream(onPartial: (text: string) => void): VoiceStrea
       queue = queue.then(async () => {
         if (failure || closed) return;
         try {
-          await invokeDesktop("voice_stream_push", { request: { pcmBase64: int16ToBase64(chunk) } });
+          await invokeDesktop("voice_stream_push", { request: { pcmBase64: int16ToBase64(chunk) } }, { quiet: true });
         } catch (error) {
           failure = new Error(messageOf(error));
         }
@@ -191,7 +191,7 @@ export function createVoiceStream(onPartial: (text: string) => void): VoiceStrea
       await queue;
       try {
         if (failure) throw failure;
-        const text = await invokeDesktop<string>("voice_stream_finish").catch((error) => {
+        const text = await invokeDesktop<string>("voice_stream_finish", undefined, { quiet: true }).catch((error) => {
           throw new Error(messageOf(error));
         });
         if (!text) throw new Error("本机识别仅在桌面应用中可用");

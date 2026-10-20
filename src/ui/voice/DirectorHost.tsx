@@ -381,6 +381,14 @@ export function DirectorHost({ preference, controller, catalog, hints, paused, a
     } catch (error) {
       if (sessionRef.current !== session) return;
       const message = error instanceof Error ? error.message : String(error);
+      // 没识别到内容是“这一轮没听清”，不是前端异常：给一句可操作的中性提示，别弹红条。
+      if (/没有识别到语音内容|no speech/i.test(message)) {
+        showNotice({
+          tone: "info",
+          text: t("没有识别到语音内容，请靠近麦克风再说一次", "No speech was recognized. Please speak again, closer to the microphone"),
+        });
+        return;
+      }
       failWith(message, /尚未选择|尚未配置|尚未下载|尚未安装|暂不支持本机|API Key|不提供语音转写|不是 OpenAI/.test(message));
     }
   }, [failWith, handleTranscript, levelStore, patch, showNotice]);
