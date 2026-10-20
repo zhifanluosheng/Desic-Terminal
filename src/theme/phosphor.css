@@ -709,8 +709,7 @@
   background: var(--bg);
 }
 
-/* 与 DSH 的接缝：上边/左边各一条 1px 亮线，边框内侧一层灰色投影。
-   iframe 画不到自身外部，所以投影落在内侧，视觉上仍然是“面板悬在宿主之上”。 */
+/* 与 DSH 的接缝：上边/左边各一条 1px 亮线（不要阴影投影，视觉更干净）。 */
 :root[data-visual="phosphor"][data-shell="host"] .terminal::after {
   content: "";
   position: absolute;
@@ -719,9 +718,6 @@
   pointer-events: none;
   border-top: 1px solid var(--dsh-border-l2, rgba(232, 232, 236, 0.16));
   border-left: 1px solid var(--dsh-border-l2, rgba(232, 232, 236, 0.16));
-  box-shadow:
-    inset 22px 0 28px -22px rgba(0, 0, 0, 0.55),
-    inset 0 22px 28px -22px rgba(0, 0, 0, 0.42);
 }
 
 /* 去掉多余的三条细线：rail 右边线、设置页头部下边线（也就是页签上方那条）。 */
