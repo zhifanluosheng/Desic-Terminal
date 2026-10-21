@@ -4683,7 +4683,7 @@
 @keyframes ai-message-locate { 0% { opacity: 0; box-shadow: 0 0 0 0 rgba(149, 92, 255, 0.2); } 24% { opacity: 1; } 100% { opacity: 0; box-shadow: 0 0 0 8px rgba(149, 92, 255, 0); }
 }
 
-@keyframes ai-inspector-enter { from { opacity: .2; transform: translateX(10px); }
+@keyframes ai-inspector-enter { from { transform: translateX(10px); }
 }
 
 @keyframes ai-running-scan { 0% { transform: translateX(-70%); opacity: 0; } 20%, 80% { opacity: .9; } 100% { transform: translateX(70%); opacity: 0; }
@@ -4730,9 +4730,11 @@
   animation: ai-focus-mode-fade 120ms ease-out;
 }
 
-/* C2 聚焦淡入关键帧（省略 to，回到计算值 opacity:1） */
+/* C2 聚焦淡入关键帧（省略 to，回到计算值 opacity:1）
+   注意：不要用 opacity 做入场动画的 from 状态——动画被暂停（面板在后台标签、
+   窗口被遮挡）时会停在 from 帧，内容就“划出来一块但是全透明”。 */
 @keyframes ai-focus-mode-fade {
-  from { opacity: 0; }
+  from { transform: translateY(4px); }
 }
 
 /* 聚焦切换钮激活态：沿用研究栏快捷钮的 active 视觉语言 */
