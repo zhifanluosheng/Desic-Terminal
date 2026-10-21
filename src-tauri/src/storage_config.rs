@@ -4041,6 +4041,16 @@ pub(crate) fn reqwest_client() -> Result<reqwest::Client, String> {
     Ok(client)
 }
 
+/// 直连客户端：代理不可用时的退路。
+///
+/// 代理进程挂掉时，带代理的请求会以 tunnel/connect 错误失败；此时用直连再试一次，
+/// 能直连的站点（多数 AI 供应商、GitHub 等）就还能工作，而不是整片瘫掉。
+pub(crate) fn direct_reqwest_client() -> Result<reqwest::Client, String> {
+    let mut config = load_proxy_config()?;
+    config.enabled = false;
+    reqwest_client_with_proxy(&config)
+}
+
 pub(crate) fn reqwest_client_with_proxy(config: &ProxyConfig) -> Result<reqwest::Client, String> {
     let mut builder = reqwest::Client::builder()
         .use_native_tls()

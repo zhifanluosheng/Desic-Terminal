@@ -8761,7 +8761,14 @@ fn abort_market_tasks(runtime: &tauri::State<'_, MarketRuntime>) -> Result<(), S
 async fn connect_okx_ws(url: &str) -> Result<OkxWebSocket, String> {
     let proxy = load_proxy_config()?;
     if proxy.enabled && matches!(proxy.proxy_type.to_uppercase().as_str(), "HTTP" | "HTTPS") {
-        return connect_okx_ws_via_http_proxy(url, &proxy).await;
+        // 代理进程不在时退回直连：能直连的网络就别让整个行情总线停摆。
+        return match connect_okx_ws_via_http_proxy(url, &proxy).await {
+            Ok(socket) => Ok(socket),
+            Err(proxy_error) => match connect_okx_ws_direct(url).await {
+                Ok(socket) => Ok(socket),
+                Err(direct_error) => Err(format!("{proxy_error}; 直连回退也失败: {direct_error}")),
+            },
+        };
     }
     connect_okx_ws_direct(url).await
 }
@@ -24418,15 +24425,30 @@ where
             retry_delay_ms: Some(OKX_PUBLIC_REST_RATE_LIMIT_RETRY_MS),
             message,
         })?;
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|err| RestRequestError {
-            retryable: reqwest_error_retryable(&err),
-            retry_delay_ms: None,
-            message: classify_reqwest_error("OKX Public REST", path, &err),
-        })?;
+    // 代理不可用时（进程挂了/端口不通）直连再试一次：带代理的请求会以 tunnel/connect
+    // 错误失败，AI 供应商、GitHub 这类能直连的站点不应该跟着代理一起挂。
+    let response = match client.get(url).send().await {
+        Ok(response) => response,
+        Err(err) => {
+            if !err.is_connect() && !err.is_timeout() {
+                return Err(RestRequestError {
+                    retryable: reqwest_error_retryable(&err),
+                    retry_delay_ms: None,
+                    message: classify_reqwest_error("OKX Public REST", path, &err),
+                });
+            }
+            let direct = crate::storage_config::direct_reqwest_client().map_err(|error| RestRequestError {
+                retryable: true,
+                retry_delay_ms: Some(OKX_PUBLIC_REST_RATE_LIMIT_RETRY_MS),
+                message: error,
+            })?;
+            direct.get(url).send().await.map_err(|err| RestRequestError {
+                retryable: reqwest_error_retryable(&err),
+                retry_delay_ms: None,
+                message: classify_reqwest_error("OKX Public REST", path, &err),
+            })?
+        }
+    };
     let status = response.status();
     let retry_after = crate::okx_rate_limit::retry_after_seconds(response.headers());
     let body = response.text().await.map_err(|err| RestRequestError {
