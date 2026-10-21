@@ -180,8 +180,29 @@ pub async fn write_http_response(
     content_type: &str,
     body: &[u8],
 ) -> io::Result<()> {
+    write_http_response_with_cache(stream, status, status_text, content_type, body, None).await
+}
+
+/// Same as [`write_http_response`], plus an optional `Cache-Control` value.
+///
+/// The bridge serves the built frontend, so a cached `index.html` would keep
+/// pointing at chunk files that a newer build already deleted — the page then
+/// dies with "Failed to fetch dynamically imported module". Hashed assets are
+/// immutable and can be cached for a year.
+pub async fn write_http_response_with_cache(
+    stream: &mut TcpStream,
+    status: u16,
+    status_text: &str,
+    content_type: &str,
+    body: &[u8],
+    cache_control: Option<&str>,
+) -> io::Result<()> {
+    let cache_header = match cache_control {
+        Some(value) => format!("Cache-Control: {value}\r\n"),
+        None => String::new(),
+    };
     let header = format!(
-        "HTTP/1.1 {status} {status_text}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type\r\n\r\n",
+        "HTTP/1.1 {status} {status_text}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n{cache_header}Connection: close\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type\r\n\r\n",
         body.len()
     );
     stream.write_all(header.as_bytes()).await?;
@@ -493,7 +514,16 @@ async fn serve_static(stream: &mut TcpStream, bridge: &HttpBridge, path: &str) -
     match tokio::fs::read(&file_path).await {
         Ok(data) => {
             let ct = content_type_for(&file_path);
-            write_http_response(stream, 200, "OK", ct, &data).await
+            // index.html 必须每次回源：前端重新构建后 chunk 文件名会变，
+            // 缓存下来的旧 index 会去请求已被删除的 chunk（动态 import 失败）。
+            let cache_control = if rel == "index.html" || file_path.extension().and_then(|e| e.to_str()) == Some("html") {
+                "no-store, no-cache, must-revalidate"
+            } else if rel.starts_with("assets/") {
+                "public, max-age=31536000, immutable"
+            } else {
+                "no-store"
+            };
+            write_http_response_with_cache(stream, 200, "OK", ct, &data, Some(cache_control)).await
         }
         Err(_) => {
             write_http_response(stream, 404, "Not Found", "text/plain", b"not found").await
