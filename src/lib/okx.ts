@@ -1083,7 +1083,9 @@ export function connectMarketStream(
             now - state.firstAt >= MARKET_STREAM_ERROR_NOTIFY_AFTER_MS;
           if (persistent && now - state.lastNotifiedAt >= MARKET_STREAM_ERROR_NOTIFY_COOLDOWN_MS) {
             state.lastNotifiedAt = now;
-            logger.error("market stream unavailable", event.message, { streamId, consecutiveErrors: state.count });
+            // 断流是可自愈的状态（顶栏已经显示“连接异常”），记警告即可；
+            // 记 error 会弹“前端代码异常”红条，把真正的前端异常淹没掉。
+            logger.warn("market stream unavailable", { message: event.message, streamId, consecutiveErrors: state.count });
           } else {
             logger.warn("market stream reconnecting", { message: event.message, streamId, consecutiveErrors: state.count });
           }

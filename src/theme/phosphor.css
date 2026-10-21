@@ -732,6 +732,13 @@
   border-bottom-color: transparent;
 }
 
+/* 顶栏的连接状态胶囊原本沿用经典的近黑底（#090b0f），和宿主同色的其它控件
+   （账号、搜索都是 #202023）不搭；图标尺寸也统一到顶栏其它图标的 15px。 */
+:root[data-visual="phosphor"][data-shell="host"] .status-pill {
+  background-color: #202023;
+  border-color: var(--dsh-border-l2, rgba(232, 232, 236, 0.13));
+}
+
 /* 设置页 / 图表周边 / 表格视图等硬编码的纯黑面板，host 外壳下统一到宿主色。 */
 :root[data-visual="phosphor"][data-shell="host"] .settings-page-panel {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.026), rgba(255, 255, 255, 0.01)), var(--bg);

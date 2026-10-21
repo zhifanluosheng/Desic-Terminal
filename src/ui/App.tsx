@@ -388,6 +388,23 @@ type ChartResizeGesture = {
   lastSize: number;
 };
 const DEFAULT_WATCHLIST = ["BTC-USDT-SWAP", "ETH-USDT-SWAP", "SOL-USDT-SWAP", "BNB-USDT-SWAP", "XRP-USDT-SWAP"];
+/**
+ * AI 研究面板常驻挂载但多数时间是隐藏的；行情每跳都换新数组，会让这个
+ * 90KB 的面板每个 tick 重渲染一次（实测每秒十几次），把可见的交易界面拖卡。
+ * 面板不在前台时不喂实时行情，切换过去时立刻换成最新的一份。
+ */
+const EMPTY_MARKET_TICKERS: Ticker[] = [];
+
+/**
+ * 给启动期的网络请求兜一个上限：代理不通时请求会一直挂着，
+ * 启动检查就会永远停在“检查中”，界面进不去。
+ */
+function withDeadline<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => window.setTimeout(() => resolve(fallback), ms))
+  ]);
+}
 const KLINE_INTEGRITY_INTERVALS = ["1m"];
 const KLINE_REQUIRED_DAYS: Record<string, number> = {
   "1m": 365
@@ -935,29 +952,48 @@ function StartupGate({ onEnter, previewFailure }: { onEnter: (assets?: MarketAss
       if (previewFailure === "okx-network") {
         throw new Error(t("common:startupOkxUnavailable"));
       }
-      const synced = await probeOkxStartupNetwork();
-      setTimeState(synced);
+      const synced = await withDeadline(
+        probeOkxStartupNetwork().catch((error) => {
+          // 代理/网络不通时不阻塞启动：行情降级、界面照常可用，用户可以在设置里修代理后重试。
+          logger.warn("startup network probe failed", { error: error instanceof Error ? error.message : String(error) });
+          return null;
+        }),
+        8000,
+        null
+      );
+      if (synced) setTimeState(synced);
       updateCheck("network", { status: "running", detail: t("common:startupConnectingPublicWs") });
       // 首屏只等 REST 探测 + 最新价；WS 可达性探测改到后台，结果只用来补状态文案。
       // 原来 public/business/private WS 串在启动路径里：公网 WS 6-7s，再串 private 3-4s，
       // 用户要等 11-12s 才看到主界面。
-      const ticker = await fetchTicker(DEFAULT_SYMBOL);
+      const ticker = await withDeadline(
+        fetchTicker(DEFAULT_SYMBOL).catch((error) => {
+          logger.warn("startup ticker fetch failed", { error: error instanceof Error ? error.message : String(error) });
+          return null;
+        }),
+        5000,
+        null
+      );
       updateCheck("network", {
         status: "passed",
-        detail: t("common:startupLatestPrice", { price: fmtPrice(ticker.last) }),
-        latencyMs: synced.rttMs
+        detail: ticker
+          ? t("common:startupLatestPrice", { price: fmtPrice(ticker.last) })
+          : t("common:startupOkxUnavailable"),
+        latencyMs: synced?.rttMs
       });
-      void Promise.all([testPublicWsReachability(), testBusinessWsReachability()])
-        .then(([wsProbe, businessProbe]) => {
-          updateCheck("network", {
-            status: "passed",
-            detail: `${wsProbe.message} · ${businessProbe.message} · ${t("common:startupLatestPrice", { price: fmtPrice(ticker.last) })}`,
-            latencyMs: Math.max(synced.rttMs, wsProbe.latencyMs, businessProbe.latencyMs)
+      if (ticker) {
+        void Promise.all([testPublicWsReachability(), testBusinessWsReachability()])
+          .then(([wsProbe, businessProbe]) => {
+            updateCheck("network", {
+              status: "passed",
+              detail: `${wsProbe.message} · ${businessProbe.message} · ${t("common:startupLatestPrice", { price: fmtPrice(ticker.last) })}`,
+              latencyMs: Math.max(synced?.rttMs ?? 0, wsProbe.latencyMs, businessProbe.latencyMs)
+            });
+          })
+          .catch((error) => {
+            logger.warn("startup websocket probe failed", { error: error instanceof Error ? error.message : String(error) });
           });
-        })
-        .catch((error) => {
-          logger.warn("startup websocket probe failed", { error: error instanceof Error ? error.message : String(error) });
-        });
+      }
 
       updateCheck("config", { status: "running", detail: t("common:startupReadingAccounts") });
       const migration = await migrateSensitiveConfig();
@@ -995,25 +1031,44 @@ function StartupGate({ onEnter, previewFailure }: { onEnter: (assets?: MarketAss
       }
 
       updateCheck("time", { status: "running", detail: t("common:startupCalculatingTimeOffset") });
-      const offsetText = `${synced.clockOffsetMs >= 0 ? "+" : ""}${synced.clockOffsetMs}ms`;
+      const offsetText = `${synced && synced.clockOffsetMs >= 0 ? "+" : ""}${synced?.clockOffsetMs ?? 0}ms`;
       updateCheck("time", { status: "passed", detail: t("common:startupTimeOffset", { offset: offsetText }) });
 
       updateCheck("assets", { status: "running", detail: t("common:startupPreparingAssets") });
-      const assets = await syncMarketAssets();
-      if (!assets) throw new Error(t("common:startupAssetsFailed"));
+      // 资产同步失败（多见于代理不通）不该把整个启动卡死：降级为提示，用缓存继续。
+      // 代理不通时这里的取数会一直挂着，所以再给一个上限，超时就用缓存先启动。
+      const assets = await withDeadline(
+        syncMarketAssets().catch((error) => {
+          logger.warn("startup market assets sync failed", { error: error instanceof Error ? error.message : String(error) });
+          return null;
+        }),
+        6000,
+        null
+      );
+      if (!assets) {
+        updateCheck("assets", { status: "passed", detail: t("common:startupAssetsFailed") });
+      }
       const watchConfig = await loadWatchlistConfig().catch((error) => {
         logger.error("startup watchlist config load failed", error);
         return null;
       });
       const watchSymbols = watchConfig?.symbols?.length ? watchConfig.symbols : DEFAULT_WATCHLIST;
-      const cachedAssets = await ensureInstrumentsCache(watchSymbols).catch((error) => {
-        logger.error("startup watchlist instrument cache failed", error, { watchSymbols });
-        return assets;
-      });
-      setAssetsSummary(cachedAssets ?? assets);
+      // 同样给缓存请求留个上限：代理不通时它会一直挂着，启动不该被它拖住。
+      const cachedAssets = await withDeadline(
+        ensureInstrumentsCache(watchSymbols).catch((error) => {
+          logger.warn("startup watchlist instrument cache failed", { error: error instanceof Error ? error.message : String(error), watchSymbols });
+          return assets;
+        }),
+        5000,
+        assets
+      );
+      const assetSummary = cachedAssets ?? assets;
+      setAssetsSummary(assetSummary ?? null);
       updateCheck("assets", {
         status: "passed",
-        detail: t("common:startupAssetsLoaded", { total: (cachedAssets ?? assets).total, cached: (cachedAssets ?? assets).iconCached })
+        detail: assetSummary
+          ? t("common:startupAssetsLoaded", { total: assetSummary.total, cached: assetSummary.iconCached })
+          : t("common:startupAssetsFailed")
       });
 
       updateCheck("database", { status: "running", detail: t("common:startupInitializingStorage") });
@@ -1712,7 +1767,7 @@ function HotConnectionStatus({
         }
       }}
     >
-      <Wifi size={14} /><span>{fmtDelay(dataDelay)}</span><small>{formatWsStatus(publicWsStatus, t)}</small>
+      <Wifi size={15} /><span>{fmtDelay(dataDelay)}</span><small>{formatWsStatus(publicWsStatus, t)}</small>
       <div className="connection-tooltip" id="wss-latency-tooltip" role="tooltip" onClick={(event) => event.stopPropagation()}>
         <div className="connection-tooltip-head"><strong>{t("trading:wssConnectionStatus")}</strong><span>{t("trading:recentDataMessages")}</span></div>
         {publicRows.length > 0
@@ -5237,7 +5292,7 @@ function TradingTerminal({
           onOpenTrading={() => setMainSection("terminal")}
           onRuntimeStateChange={setAiWorkspaceSignal}
           marketAssets={marketAssets}
-          marketTickers={marketTickers}
+          marketTickers={mainSection === "ai" ? marketTickers : EMPTY_MARKET_TICKERS}
           cacheDir={marketAssetCacheDir}
           onOpenSettings={openAiSettings}
           onOpenStrategy={openAiStrategy}

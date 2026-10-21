@@ -1686,7 +1686,8 @@ export function applyAiEvent(
   }
   if (event.type === "pendingPrompts" || event.type === "pendingPromptSubmitted" || event.type === "pendingPromptError") return;
   if (event.type === "error") {
-    logger.error("ai event error", event.message);
+    // 失败原因已经落在助手气泡里了；这里只记警告，避免再弹一个“前端代码异常”红条。
+    logger.warn("ai event error", { message: event.message });
     setStatus("failed");
     setMessages((items) => updateLastAssistant(items, (message) => ({
       ...message,
